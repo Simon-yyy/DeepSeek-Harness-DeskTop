@@ -242,6 +242,32 @@ function stopBackendIfOurs() {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Auto-initialize 35 bundled skills into user's ~/.dsh/skills on first run
+// ---------------------------------------------------------------------------
+function ensureBundledSkills() {
+  try {
+    const userDshSkills = path.join(app.getPath("home"), ".dsh", "skills");
+    const bundledSkills = path.join(__dirname, "bundled-skills");
+    if (fs.existsSync(bundledSkills)) {
+      if (!fs.existsSync(userDshSkills)) {
+        fs.mkdirSync(userDshSkills, { recursive: true });
+      }
+      const entries = fs.readdirSync(bundledSkills);
+      for (const entry of entries) {
+        const src = path.join(bundledSkills, entry);
+        const target = path.join(userDshSkills, entry);
+        if (!fs.existsSync(target)) {
+          fs.cpSync(src, target, { recursive: true });
+        }
+      }
+      console.log("[dsh-desktop] Bundled skills checked and initialized.");
+    }
+  } catch (err) {
+    console.warn("[dsh-desktop] ensureBundledSkills warning:", err.message);
+  }
+}
+
 // Window & System Tray
 // ---------------------------------------------------------------------------
 function getAppIcon() {
@@ -412,6 +438,7 @@ app.on("second-instance", () => {
 });
 
 app.whenReady().then(async () => {
+  ensureBundledSkills();
   // Register global summon shortcut: Ctrl + Shift + D
   try {
     globalShortcut.register("CommandOrControl+Shift+D", () => {

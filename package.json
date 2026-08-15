@@ -1,6 +1,6 @@
 {
   "name": "dsh-desktop",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "DeepSeek Harness Web GUI desktop launcher (Electron)",
   "main": "main.js",
   "author": "Simon-yyy",
@@ -36,10 +36,10 @@
       "main.js",
       "preload.js",
       "afterPack.js",
+      "build/**/*",
       "icon.ico",
       "icon.png",
-      "build/icon.ico",
-      "build/icon.png"
+      "bundled-skills/**/*"
     ],
     "win": {
       "target": [
