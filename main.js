@@ -297,64 +297,7 @@ function createTray(appIcon) {
           if (mainWindow) {
             mainWindow.show();
             mainWindow.focus();
-            mainWindow.loadURL(WEB_URL);
-
-  // ---------------------------------------------------------------------------
-  // 在主 World 内通过 executeJavaScript 注入全格式文件拖拽拦截器
-  // （因 contextIsolation:true，preload 无法直接拦截网页事件，需用此方案）
-  // ---------------------------------------------------------------------------
-  const DROP_INTERCEPTOR_JS = `(function() {
-    if (window.__dshDropInterceptorInstalled) return;
-    window.__dshDropInterceptorInstalled = true;
-
-    function insertPath(p) {
-      if (!p) return;
-      const ta = document.querySelector('textarea');
-      if (!ta) return;
-      ta.focus();
-      const cur = ta.value || '';
-      const sp = cur && !cur.endsWith(' ') && !cur.endsWith('\\n') ? ' ' : '';
-      const nv = cur + sp + p + ' ';
-      const proto = window.HTMLTextAreaElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-      if (setter) setter.call(ta, nv);
-      else ta.value = nv;
-      ta.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-      ta.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-    }
-
-    function reset() {
-      window.dispatchEvent(new Event('dragend'));
-      document.dispatchEvent(new Event('dragend'));
-    }
-
-    window.addEventListener('dragover', function(e) { e.preventDefault(); }, true);
-    window.addEventListener('dragleave', function(e) {
-      if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) reset();
-    }, true);
-    window.addEventListener('keydown', function(e) { if (e.key === 'Escape') reset(); });
-
-    window.addEventListener('drop', function(e) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      reset();
-      var files = e.dataTransfer?.files;
-      if (!files || !files.length) return;
-      // ipc-injected-path event handled by main process listener on ipcMain
-      for (var i = 0; i < files.length; i++) {
-        var f = files[i];
-        if (f.path) { insertPath(f.path); break; }
-      }
-    }, true);
-  })();`;
-
-  // 每次页面导航完成后重新注入（SPA 路由切换也覆盖）
-  mainWindow.webContents.on('dom-ready', () => {
-    mainWindow.webContents.executeJavaScript(DROP_INTERCEPTOR_JS).catch(() => {});
-  });
-
-
-          }
+            mainWindow.loadURL(WEB_URL);          }
         },
       },
       {
@@ -439,6 +382,59 @@ function createWindow() {
   });
 
   mainWindow.loadURL(WEB_URL);
+
+  // ---------------------------------------------------------------------------
+  // 在主 World 内通过 executeJavaScript 注入全格式文件拖拽拦截器
+  // （因 contextIsolation:true，preload 脚本处于隔离 World，无法直接拦截网页 React 事件，需用此方案）
+  // ---------------------------------------------------------------------------
+  const DROP_INTERCEPTOR_JS = `(function() {
+    if (window.__dshDropInterceptorInstalled) return;
+    window.__dshDropInterceptorInstalled = true;
+
+    function insertPath(p) {
+      if (!p) return;
+      const ta = document.querySelector('textarea');
+      if (!ta) return;
+      ta.focus();
+      const cur = ta.value || '';
+      const sp = cur && !cur.endsWith(' ') && !cur.endsWith('\\n') ? ' ' : '';
+      const nv = cur + sp + p + ' ';
+      const proto = window.HTMLTextAreaElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+      if (setter) setter.call(ta, nv);
+      else ta.value = nv;
+      ta.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+      ta.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+    }
+
+    function reset() {
+      window.dispatchEvent(new Event('dragend'));
+      document.dispatchEvent(new Event('dragend'));
+    }
+
+    window.addEventListener('dragover', function(e) { e.preventDefault(); }, true);
+    window.addEventListener('dragleave', function(e) {
+      if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) reset();
+    }, true);
+    window.addEventListener('keydown', function(e) { if (e.key === 'Escape') reset(); });
+
+    window.addEventListener('drop', function(e) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      reset();
+      var files = e.dataTransfer?.files;
+      if (!files || !files.length) return;
+      for (var i = 0; i < files.length; i++) {
+        var f = files[i];
+        if (f.path) { insertPath(f.path); break; }
+      }
+    }, true);
+  })();`;
+
+  // 每次页面 dom-ready 后重新注入（SPA 路由切换不触发 did-finish-load，但 dom-ready 会触发）
+  mainWindow.webContents.on('dom-ready', () => {
+    mainWindow.webContents.executeJavaScript(DROP_INTERCEPTOR_JS).catch(() => {});
+  });
 
   // Auto check for updates on startup (silently in background after 5s)
   setTimeout(() => {
