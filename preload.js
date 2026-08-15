@@ -1,40 +1,53 @@
-const { ipcRenderer, contextBridge } = require("electron");
+const { ipcRenderer } = require("electron");
 
-// 通过 contextBridge 安全地将 Electron IPC 能力暴露给主 World
-contextBridge.exposeInMainWorld('dshBridge', {
-  // 主 World 中检测到文件路径后，调用此函数委托主进程用原生 insertText 注入
-  insertPath: (filePath) => ipcRenderer.invoke('dsh-insert-path', filePath),
-});
+function insertPathText(filePath) {
+  if (!filePath) return;
+  const activeEl = document.activeElement;
+  const target = activeEl && (activeEl.tagName === "TEXTAREA" || activeEl.tagName === "INPUT")
+    ? activeEl
+    : document.querySelector("textarea, input[type='text']");
 
-// ---------------------------------------------------------------------------
-// 图片截图粘贴处理器（preload 隔离 World 中处理 IPC 图片保存）
-// ---------------------------------------------------------------------------
+  if (target) {
+    target.focus();
+    let inserted = false;
+    try {
+      inserted = document.execCommand("insertText", false, filePath + " ");
+    } catch {
+      inserted = false;
+    }
+    if (!inserted) {
+      const proto = target.tagName === "TEXTAREA"
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      if (setter) {
+        setter.call(target, (target.value ? target.value + " " : "") + filePath + " ");
+        target.dispatchEvent(new Event("input", { bubbles: true }));
+        target.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+  }
+}
+
+// 拦截剪贴板截图粘贴（配合 ModLens / 视觉插件）
 window.addEventListener(
   "paste",
   async (event) => {
     const clipboardData = event.clipboardData;
     if (!clipboardData) return;
 
-    // A. 资源管理器中复制的非图片文件 -> 走 dshBridge.insertPath
+    let imageFile = null;
     if (clipboardData.files && clipboardData.files.length > 0) {
-      let handled = false;
       for (let i = 0; i < clipboardData.files.length; i++) {
         const file = clipboardData.files[i];
-        if (file.path && !file.type.startsWith("image/")) {
-          ipcRenderer.invoke('dsh-insert-path', file.path).catch(() => {});
-          handled = true;
+        if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+          imageFile = file;
+          break;
         }
-      }
-      if (handled) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        return;
       }
     }
 
-    // B. 剪贴板截图 -> 保存为临时文件，再注入路径
-    let imageFile = null;
-    if (clipboardData.items) {
+    if (!imageFile && clipboardData.items) {
       for (let i = 0; i < clipboardData.items.length; i++) {
         const item = clipboardData.items[i];
         if (item.type.startsWith("image/")) {
@@ -54,7 +67,7 @@ window.addEventListener(
           buffer: Array.from(new Uint8Array(arrayBuffer)),
           ext,
         });
-        if (filePath) ipcRenderer.invoke('dsh-insert-path', filePath).catch(() => {});
+        insertPathText(filePath);
       } catch (err) {
         console.error("[dsh-desktop] paste image failed:", err);
       }
