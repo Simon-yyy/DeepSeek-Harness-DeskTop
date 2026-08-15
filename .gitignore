@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+package-lock.json.bak
+
+# Build & Packaging outputs
+release/
+dist/
+build/icon.ico
+build/icon.png
+preview-black-whale.png
+
+# Build cache
+.npm-cache/
+.builder-cache/
+.agents/
+
+# Logs & Temporary files
+*.log
+dsh-desktop-test*.txt
+.DS_Store
+Thumbs.db

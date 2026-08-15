@@ -1,0 +1,67 @@
+{
+  "name": "dsh-desktop",
+  "version": "1.0.0",
+  "description": "DeepSeek Harness Web GUI desktop launcher (Electron)",
+  "main": "main.js",
+  "author": "Simon-yyy",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "build:icon": "node make-icon.mjs",
+    "dist": "electron-builder --win",
+    "release": "node scripts/release.mjs current",
+    "release:patch": "node scripts/release.mjs patch",
+    "release:minor": "node scripts/release.mjs minor",
+    "release:major": "node scripts/release.mjs major"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "png-to-ico": "^3.0.2",
+    "rcedit": "^5.0.2",
+    "sharp": "^0.35.3"
+  },
+  "build": {
+    "appId": "com.dsh.desktop",
+    "productName": "DSH Desktop",
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "icon": "build/icon.ico",
+    "afterPack": "afterPack.js",
+    "files": [
+      "main.js",
+      "preload.js",
+      "afterPack.js",
+      "icon.ico",
+      "icon.png",
+      "build/icon.ico",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "shortcutName": "DSH Desktop"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Simon-yyy/DeepSeek-Harness-DeskTop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Simon-yyy/DeepSeek-Harness-DeskTop/issues"
+  },
+  "homepage": "https://github.com/Simon-yyy/DeepSeek-Harness-DeskTop#readme"
+}
