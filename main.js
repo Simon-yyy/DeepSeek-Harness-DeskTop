@@ -32,6 +32,22 @@ ipcMain.handle("save-paste-image", async (_event, { buffer, ext }) => {
   console.log(`[dsh-desktop] Saved pasted image to ${filePath}`);
   return filePath;
 });
+// 文件路径注入：使用 Electron 原生 insertText 穿透 React 受控组件限制
+ipcMain.handle("dsh-insert-path", async (_event, filePath) => {
+  if (!filePath || !mainWindow) return;
+  try {
+    // 先聚焦 textarea
+    await mainWindow.webContents.executeJavaScript(
+      "(function(){ var ta=document.querySelector('textarea'); if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);} })()"
+    ).catch(() => {});
+    // 原生 insertText：等效于系统键盘输入，React 视为真实用户打字
+    await mainWindow.webContents.insertText(filePath + " ");
+    console.log("[dsh-desktop] insertText:", filePath);
+  } catch (err) {
+    console.warn("[dsh-desktop] dsh-insert-path failed:", err.message);
+  }
+});
+
 
 const WEB_PORT = 3080;
 const WEB_URL = `http://127.0.0.1:${WEB_PORT}`;
@@ -390,21 +406,19 @@ function createWindow() {
   const DROP_INTERCEPTOR_JS = `(function() {
     if (window.__dshDropInterceptorInstalled) return;
     window.__dshDropInterceptorInstalled = true;
+    console.log('[DSH Desktop] Drop interceptor installed in main world');
 
     function insertPath(p) {
       if (!p) return;
-      const ta = document.querySelector('textarea');
-      if (!ta) return;
-      ta.focus();
-      const cur = ta.value || '';
-      const sp = cur && !cur.endsWith(' ') && !cur.endsWith('\\n') ? ' ' : '';
-      const nv = cur + sp + p + ' ';
-      const proto = window.HTMLTextAreaElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-      if (setter) setter.call(ta, nv);
-      else ta.value = nv;
-      ta.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-      ta.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+      console.log('[DSH Desktop] File detected, delegating to main process insertText:', p);
+      // 委托 Electron 主进程用原生 insertText 注入（穿透 React 受控组件限制）
+      if (window.dshBridge && window.dshBridge.insertPath) {
+        window.dshBridge.insertPath(p).catch(function(e) { console.error('[DSH Desktop] insertPath IPC failed:', e); });
+      } else {
+        console.warn('[DSH Desktop] dshBridge not available, falling back to execCommand');
+        var ta = document.querySelector('textarea');
+        if (ta) { ta.focus(); document.execCommand('insertText', false, p + ' '); }
+      }
     }
 
     function reset() {
@@ -412,11 +426,26 @@ function createWindow() {
       document.dispatchEvent(new Event('dragend'));
     }
 
-    window.addEventListener('dragover', function(e) { e.preventDefault(); }, true);
-    window.addEventListener('dragleave', function(e) {
-      if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) reset();
+    // 全面拦截：dragenter/dragover/dragleave/drop 全部在捕获阶段处理
+    window.addEventListener('dragenter', function(e) {
+      if (!e.dataTransfer?.types.includes('Files')) return;
+      e.stopImmediatePropagation(); // 阻止 React 的 onDragEnter 显示遮罩
     }, true);
-    window.addEventListener('keydown', function(e) { if (e.key === 'Escape') reset(); });
+
+    window.addEventListener('dragover', function(e) {
+      if (!e.dataTransfer?.types.includes('Files')) return;
+      e.preventDefault();
+      e.stopImmediatePropagation(); // 阻止 React 的 onDragOver 设置 dropEffect
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    }, true);
+
+    window.addEventListener('dragleave', function(e) {
+      if (!e.dataTransfer?.types.includes('Files')) return;
+      e.stopImmediatePropagation(); // 阻止 React 的 onDragLeave 触发 intakeImages
+      if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+        reset();
+      }
+    }, true);
 
     window.addEventListener('drop', function(e) {
       e.preventDefault();
@@ -424,11 +453,15 @@ function createWindow() {
       reset();
       var files = e.dataTransfer?.files;
       if (!files || !files.length) return;
+      console.log('[DSH Desktop] Files dropped:', files.length);
       for (var i = 0; i < files.length; i++) {
         var f = files[i];
+        console.log('[DSH Desktop] File:', f.name, 'path:', f.path);
         if (f.path) { insertPath(f.path); break; }
       }
     }, true);
+
+    window.addEventListener('keydown', function(e) { if (e.key === 'Escape') reset(); });
   })();`;
 
   // 每次页面 dom-ready 后重新注入（SPA 路由切换不触发 did-finish-load，但 dom-ready 会触发）
