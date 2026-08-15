@@ -29,6 +29,13 @@ function insertPathText(textToInsert) {
   }
 }
 
+function dismissDragOverlay() {
+  try {
+    window.dispatchEvent(new Event("dragend"));
+    document.dispatchEvent(new Event("dragend"));
+  } catch {}
+}
+
 // ---------------------------------------------------------------------------
 // 1. Intercept Paste (Images & Copied Files from Explorer)
 // ---------------------------------------------------------------------------
@@ -90,52 +97,50 @@ window.addEventListener(
       }
     }
   },
-  true // Capture phase
+  true // Capture phase for paste
 );
 
 // ---------------------------------------------------------------------------
-// 2. Enable smooth Drag & Drop across the whole window
+// 2. Drag & Drop: Seamless reset & no stuck overlays
 // ---------------------------------------------------------------------------
 window.addEventListener("dragover", (event) => {
   event.preventDefault();
-}, true);
+});
 
-window.addEventListener("dragenter", (event) => {
-  event.preventDefault();
-}, true);
+window.addEventListener("dragleave", (event) => {
+  if (event.clientX <= 0 || event.clientY <= 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight) {
+    dismissDragOverlay();
+  }
+});
 
-// ---------------------------------------------------------------------------
-// 3. Intercept Drop (Drag & drop ANY file: PDF, Word, Code, Image, Zip, etc.)
-// ---------------------------------------------------------------------------
-window.addEventListener(
-  "drop",
-  async (event) => {
-    const dataTransfer = event.dataTransfer;
-    if (!dataTransfer || !dataTransfer.files || dataTransfer.files.length === 0) return;
+window.addEventListener("drop", async (event) => {
+  dismissDragOverlay();
+  const dataTransfer = event.dataTransfer;
+  if (!dataTransfer || !dataTransfer.files || dataTransfer.files.length === 0) return;
 
-    event.preventDefault();
-    event.stopImmediatePropagation();
-
-    for (let i = 0; i < dataTransfer.files.length; i++) {
-      const file = dataTransfer.files[i];
-
-      // If it has an absolute path on disk (standard Electron File object from explorer drag)
-      if (file.path) {
-        insertPathText(file.path);
-      } else if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
-        try {
-          const arrayBuffer = await file.arrayBuffer();
-          const ext = file.type === "image/jpeg" ? ".jpg" : (file.type === "image/webp" ? ".webp" : ".png");
-          const filePath = await ipcRenderer.invoke("save-paste-image", {
-            buffer: Array.from(new Uint8Array(arrayBuffer)),
-            ext,
-          });
-          insertPathText(filePath);
-        } catch (err) {
-          console.error("[dsh-desktop] drop image failed:", err);
-        }
+  for (let i = 0; i < dataTransfer.files.length; i++) {
+    const file = dataTransfer.files[i];
+    if (file.path) {
+      insertPathText(file.path);
+    } else if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const ext = file.type === "image/jpeg" ? ".jpg" : (file.type === "image/webp" ? ".webp" : ".png");
+        const filePath = await ipcRenderer.invoke("save-paste-image", {
+          buffer: Array.from(new Uint8Array(arrayBuffer)),
+          ext,
+        });
+        insertPathText(filePath);
+      } catch (err) {
+        console.error("[dsh-desktop] drop image failed:", err);
       }
     }
-  },
-  true // Capture phase
-);
+  }
+});
+
+// Escape key or click dismisses any stuck drag overlay
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    dismissDragOverlay();
+  }
+});
