@@ -163,6 +163,26 @@ npx @liustack/modlens doctor
 
 ---
 
+---
+
+## 🏠 离线与私有化大模型接入 (Ollama / vLLM / LM Studio)
+
+对于企业内网、数据合规或无网络环境，**DSH Desktop** 原生支持一键直连本地或局域网私有化模型服务，实现 **100% 纯离线安全编程**：
+
+### 1. 接入本地 Ollama
+确保本地已安装 [Ollama](https://ollama.com/) 并拉取模型（如 `ollama run deepseek-r1:14b` 或 `ollama run qwen2.5-coder:32b`）：
+
+1. 打开 DSH Desktop 左下角 **「⚙️ 设置」➔「模型」**；
+2. **Base URL** 填写：`http://127.0.0.1:11434/v1`；
+3. **API Key** 填写任意字符（如 `ollama`）；
+4. **Model** 填写本地运行的模型名（如 `deepseek-r1:14b` 或 `qwen2.5-coder:32b`）。
+
+### 2. 接入 vLLM / LM Studio / 局域网服务
+1. 启动本地 vLLM 或 LM Studio 的 Local Server（默认监听 `http://127.0.0.1:1234/v1` 或 `http://127.0.0.1:8000/v1`）；
+2. 在 DSH Desktop 设置中直接将 Base URL 指向对应端口即可，无任何遥测与外部网络外发！
+
+---
+
 ## 💡 特色功能与日常使用技巧
 
 ### 1. 截图与设计图解析使用方式

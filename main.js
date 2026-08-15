@@ -1,6 +1,7 @@
 const { app, BrowserWindow, shell, dialog, nativeImage, ipcMain, Tray, Menu, globalShortcut } = require("electron");
 const { spawn, spawnSync } = require("node:child_process");
 const http = require("node:http");
+const https = require("node:https");
 const net = require("node:net");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -35,6 +36,81 @@ ipcMain.handle("save-paste-image", async (_event, { buffer, ext }) => {
 const WEB_PORT = 3080;
 const WEB_URL = `http://127.0.0.1:${WEB_PORT}`;
 const STARTUP_TIMEOUT_MS = 90_000;
+const REPO_OWNER = "Simon-yyy";
+const REPO_NAME = "DeepSeek-Harness-DeskTop";
+
+// ---------------------------------------------------------------------------
+// Auto-Updater: Check GitHub Releases for newer version
+// ---------------------------------------------------------------------------
+function checkForUpdates(silent = true) {
+  const options = {
+    hostname: "api.github.com",
+    path: `/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
+    method: "GET",
+    headers: {
+      "User-Agent": "DSH-Desktop-App",
+      "Accept": "application/vnd.github.v3+json",
+    },
+    timeout: 5000,
+  };
+
+  const req = https.request(options, (res) => {
+    let data = "";
+    res.on("data", (chunk) => { data += chunk; });
+    res.on("end", () => {
+      try {
+        if (res.statusCode !== 200) {
+          if (!silent) dialog.showMessageBox(mainWindow || null, { type: "info", title: "检查更新", message: "未能连接到 GitHub 更新服务器，请稍后重试。" });
+          return;
+        }
+        const release = JSON.parse(data);
+        const latestTag = (release.tag_name || "").replace(/^v/, "");
+        const currentVer = app.getVersion();
+
+        if (latestTag && compareVersions(latestTag, currentVer) > 0) {
+          dialog.showMessageBox(mainWindow || null, {
+            type: "info",
+            title: "🎉 发现 DSH Desktop 新版本",
+            message: `发现全新版本 v${latestTag}（当前版本 v${currentVer}）！\n\n更新日志：\n${release.body ? release.body.slice(0, 300) : "性能与稳定性改进"}\n\n是否立即前往下载最新安装包？`,
+            buttons: ["立即前往下载", "稍后提醒"],
+            defaultId: 0,
+            cancelId: 1,
+          }).then(({ response }) => {
+            if (response === 0) {
+              shell.openExternal(release.html_url || `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
+            }
+          });
+        } else if (!silent) {
+          dialog.showMessageBox(mainWindow || null, {
+            type: "info",
+            title: "检查更新",
+            message: `当前已是最新版本 (v${currentVer})！无需更新。`,
+          });
+        }
+      } catch (err) {
+        if (!silent) dialog.showMessageBox(mainWindow || null, { type: "error", title: "检查更新", message: `解析更新数据失败: ${err.message}` });
+      }
+    });
+  });
+
+  req.on("error", (err) => {
+    if (!silent) dialog.showMessageBox(mainWindow || null, { type: "warning", title: "检查更新", message: `检查更新失败: ${err.message}` });
+  });
+  req.on("timeout", () => { req.destroy(); });
+  req.end();
+}
+
+function compareVersions(v1, v2) {
+  const p1 = v1.split(".").map(Number);
+  const p2 = v2.split(".").map(Number);
+  for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+    const num1 = p1[i] || 0;
+    const num2 = p2[i] || 0;
+    if (num1 > num2) return 1;
+    if (num1 < num2) return -1;
+  }
+  return 0;
+}
 
 // ---------------------------------------------------------------------------
 // Toolchain resolution (all resolved once at startup)
@@ -199,6 +275,12 @@ function createTray(appIcon) {
           }
         },
       },
+      {
+        label: "🔍 检查更新...",
+        click: () => {
+          checkForUpdates(false);
+        },
+      },
       { type: "separator" },
       {
         label: "退出应用",
@@ -208,7 +290,7 @@ function createTray(appIcon) {
         },
       },
     ]);
-    tray.setToolTip("DSH Desktop - DeepSeek Harness");
+    tray.setToolTip(`DSH Desktop v${app.getVersion()}`);
     tray.setContextMenu(contextMenu);
     tray.on("click", () => {
       if (mainWindow) {
@@ -275,6 +357,11 @@ function createWindow() {
   });
 
   mainWindow.loadURL(WEB_URL);
+
+  // Auto check for updates on startup (silently in background after 5s)
+  setTimeout(() => {
+    checkForUpdates(true);
+  }, 5000);
 
   // Test hook: DSH_DESKTOP_TEST=1
   if (process.env.DSH_DESKTOP_TEST === "1") {
