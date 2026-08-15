@@ -2,31 +2,36 @@ const { ipcRenderer } = require("electron");
 
 function insertPathText(textToInsert) {
   if (!textToInsert) return;
-  const activeEl = document.activeElement;
-  const target = activeEl && (activeEl.tagName === "TEXTAREA" || activeEl.tagName === "INPUT")
-    ? activeEl
-    : document.querySelector("textarea, input[type='text']");
 
-  if (target) {
-    target.focus();
-    let inserted = false;
-    try {
-      inserted = document.execCommand("insertText", false, textToInsert + " ");
-    } catch {
-      inserted = false;
-    }
-    if (!inserted) {
-      const proto = target.tagName === "TEXTAREA"
-        ? window.HTMLTextAreaElement.prototype
-        : window.HTMLInputElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-      if (setter) {
-        setter.call(target, (target.value ? target.value + " " : "") + textToInsert + " ");
-        target.dispatchEvent(new Event("input", { bubbles: true }));
-        target.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-    }
+  const target = document.querySelector("textarea") || document.querySelector("input[type='text']") || document.activeElement;
+  if (!target) return;
+
+  target.focus();
+
+  const currentVal = target.value || "";
+  const spacer = currentVal && !currentVal.endsWith(" ") && !currentVal.endsWith("\n") ? " " : "";
+  const newVal = currentVal + spacer + textToInsert + " ";
+
+  // 1. Try React controlled value setter override
+  const proto = target.tagName === "TEXTAREA"
+    ? window.HTMLTextAreaElement.prototype
+    : window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+
+  if (setter) {
+    setter.call(target, newVal);
+  } else {
+    target.value = newVal;
   }
+
+  // 2. Dispatch synthetic Input & Change events with bubbling
+  target.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+  target.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+
+  // 3. Fallback execCommand if needed
+  try {
+    document.execCommand("insertText", false, "");
+  } catch {}
 }
 
 function dismissDragOverlay() {
@@ -101,7 +106,7 @@ window.addEventListener(
       }
     }
   },
-  true // Capture phase
+  true // Capture phase for paste
 );
 
 // ---------------------------------------------------------------------------
