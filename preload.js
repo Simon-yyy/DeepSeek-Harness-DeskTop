@@ -123,7 +123,6 @@ window.addEventListener(
       if (file.path) {
         insertPathText(file.path);
       } else if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
-        // Fallback for virtual / browser-generated image buffers
         try {
           const arrayBuffer = await file.arrayBuffer();
           const ext = file.type === "image/jpeg" ? ".jpg" : (file.type === "image/webp" ? ".webp" : ".png");
@@ -142,7 +141,7 @@ window.addEventListener(
 );
 
 // ---------------------------------------------------------------------------
-// 4. Quick Action Chips: Modern floating skill capsules above input
+// 4. Quick Action Chips: Ultra-minimalist, sleek native design
 // ---------------------------------------------------------------------------
 function initQuickActions() {
   if (document.getElementById("dsh-quick-actions-bar")) return;
@@ -152,53 +151,61 @@ function initQuickActions() {
   style.textContent = `
     #dsh-quick-actions-bar {
       position: fixed;
-      bottom: 84px;
+      bottom: 80px;
       left: 50%;
       transform: translateX(-50%);
       display: flex;
-      gap: 8px;
-      padding: 6px 12px;
-      background: rgba(26, 28, 35, 0.78);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 20px;
-      z-index: 99999;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      gap: 6px;
+      padding: 4px 6px;
+      background: rgba(255, 255, 255, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 16px;
+      z-index: 999;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+      transition: all 0.2s ease;
       user-select: none;
     }
-    #dsh-quick-actions-bar.dsh-minimized {
-      transform: translateX(-50%) translateY(32px);
-      opacity: 0.35;
-    }
-    #dsh-quick-actions-bar:hover {
-      opacity: 1 !important;
-      transform: translateX(-50%) translateY(0) !important;
-      border-color: rgba(64, 150, 255, 0.4);
-    }
     .dsh-chip {
-      font-size: 12px;
-      color: #e6edf3;
-      background: rgba(255, 255, 255, 0.08);
-      padding: 4px 10px;
-      border-radius: 12px;
+      font-size: 11.5px;
+      color: #64748b;
+      background: transparent;
+      padding: 3px 9px;
+      border-radius: 10px;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 3px;
       border: 1px solid transparent;
       transition: all 0.15s ease;
       white-space: nowrap;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
     }
     .dsh-chip:hover {
-      background: rgba(79, 140, 255, 0.25);
-      border-color: rgba(100, 160, 255, 0.5);
-      color: #ffffff;
-      transform: translateY(-1px);
+      background: rgba(0, 0, 0, 0.05);
+      color: #0f172a;
+      border-color: rgba(0, 0, 0, 0.08);
     }
     .dsh-chip:active {
-      transform: scale(0.96);
+      transform: scale(0.97);
+    }
+
+    /* Dark mode automatic adaptation */
+    @media (prefers-color-scheme: dark) {
+      #dsh-quick-actions-bar {
+        background: rgba(30, 32, 40, 0.65);
+        border-color: rgba(255, 255, 255, 0.08);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+      }
+      .dsh-chip {
+        color: #94a3b8;
+      }
+      .dsh-chip:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: #f1f5f9;
+        border-color: rgba(255, 255, 255, 0.12);
+      }
     }
   `;
   document.head.appendChild(style);
@@ -207,19 +214,19 @@ function initQuickActions() {
   bar.id = "dsh-quick-actions-bar";
 
   const chips = [
-    { label: "🐞 诊断报错", cmd: "/diagnosing-bugs " },
-    { label: "🧪 TDD 单测", cmd: "/tdd " },
-    { label: "🔍 代码审查", cmd: "/code-review " },
-    { label: "🏗️ 架构设计", cmd: "/codebase-design " },
-    { label: "🧙 交互向导", cmd: "/wizard " },
-    { label: "🧐 方案拷问", cmd: "/grill-me " },
+    { label: "🐞 诊断", cmd: "/diagnosing-bugs " },
+    { label: "🧪 TDD", cmd: "/tdd " },
+    { label: "🔍 审查", cmd: "/code-review " },
+    { label: "🏗️ 架构", cmd: "/codebase-design " },
+    { label: "🧙 向导", cmd: "/wizard " },
+    { label: "🧐 拷问", cmd: "/grill-me " },
   ];
 
   chips.forEach((c) => {
     const chip = document.createElement("div");
     chip.className = "dsh-chip";
     chip.textContent = c.label;
-    chip.title = `插入 ${c.cmd.trim()} 技能`;
+    chip.title = `快捷插入 ${c.cmd.trim()} 技能`;
     chip.addEventListener("click", () => {
       insertPathText(c.cmd);
     });
