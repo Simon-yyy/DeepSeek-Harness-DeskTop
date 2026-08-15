@@ -47,14 +47,18 @@ window.addEventListener(
 
     // A. Check for files copied from Explorer (PDF, Word, Code, etc.)
     if (clipboardData.files && clipboardData.files.length > 0) {
+      let handled = false;
       for (let i = 0; i < clipboardData.files.length; i++) {
         const file = clipboardData.files[i];
         if (file.path) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
           insertPathText(file.path);
-          return;
+          handled = true;
         }
+      }
+      if (handled) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
       }
     }
 
@@ -97,48 +101,67 @@ window.addEventListener(
       }
     }
   },
-  true // Capture phase for paste
+  true // Capture phase
 );
 
 // ---------------------------------------------------------------------------
-// 2. Drag & Drop: Seamless reset & no stuck overlays
+// 2. Drag & Drop: Full document support (PDF, Word, Excel, Code) without rejected toast
 // ---------------------------------------------------------------------------
-window.addEventListener("dragover", (event) => {
-  event.preventDefault();
-});
+window.addEventListener(
+  "dragover",
+  (event) => {
+    event.preventDefault();
+  },
+  true
+);
 
-window.addEventListener("dragleave", (event) => {
-  if (event.clientX <= 0 || event.clientY <= 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight) {
+window.addEventListener(
+  "dragleave",
+  (event) => {
+    if (event.clientX <= 0 || event.clientY <= 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight) {
+      dismissDragOverlay();
+    }
+  },
+  true
+);
+
+window.addEventListener(
+  "drop",
+  async (event) => {
+    // Intercept to prevent web app from rejecting non-image files with "仅支持图片" toast
+    event.preventDefault();
+    event.stopImmediatePropagation();
     dismissDragOverlay();
-  }
-});
 
-window.addEventListener("drop", async (event) => {
-  dismissDragOverlay();
-  const dataTransfer = event.dataTransfer;
-  if (!dataTransfer || !dataTransfer.files || dataTransfer.files.length === 0) return;
+    const dataTransfer = event.dataTransfer;
+    if (!dataTransfer || !dataTransfer.files || dataTransfer.files.length === 0) return;
 
-  for (let i = 0; i < dataTransfer.files.length; i++) {
-    const file = dataTransfer.files[i];
-    if (file.path) {
-      insertPathText(file.path);
-    } else if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const ext = file.type === "image/jpeg" ? ".jpg" : (file.type === "image/webp" ? ".webp" : ".png");
-        const filePath = await ipcRenderer.invoke("save-paste-image", {
-          buffer: Array.from(new Uint8Array(arrayBuffer)),
-          ext,
-        });
-        insertPathText(filePath);
-      } catch (err) {
-        console.error("[dsh-desktop] drop image failed:", err);
+    for (let i = 0; i < dataTransfer.files.length; i++) {
+      const file = dataTransfer.files[i];
+
+      // Any file from local disk (PDF, Word, Excel, Code, etc.)
+      if (file.path) {
+        insertPathText(file.path);
+      } else if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+        // Fallback for virtual / browser-generated image buffers
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const ext = file.type === "image/jpeg" ? ".jpg" : (file.type === "image/webp" ? ".webp" : ".png");
+          const filePath = await ipcRenderer.invoke("save-paste-image", {
+            buffer: Array.from(new Uint8Array(arrayBuffer)),
+            ext,
+          });
+          insertPathText(filePath);
+        } catch (err) {
+          console.error("[dsh-desktop] drop image failed:", err);
+        }
       }
     }
-  }
-});
+  },
+  true // Capture phase: must intercept before web app's rejected toast!
+);
 
-// Escape key or click dismisses any stuck drag overlay
+// Escape key to dismiss any stuck drag state
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     dismissDragOverlay();
