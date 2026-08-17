@@ -115,6 +115,19 @@ function compareVersions(v1, v2) {
 // ---------------------------------------------------------------------------
 // Toolchain resolution (all resolved once at startup)
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Ensure Node.js binary directory is in PATH for all subprocesses & DSH Kernel
+// ---------------------------------------------------------------------------
+function ensureNodeInPath() {
+  const nodeBin = resolveNode();
+  if (nodeBin && fs.existsSync(nodeBin)) {
+    const nodeDir = path.dirname(nodeBin);
+    if (!process.env.PATH.includes(nodeDir)) {
+      process.env.PATH = `${nodeDir};${process.env.PATH}`;
+      console.log(`[dsh-desktop] Prepend ${nodeDir} to PATH`);
+    }
+  }
+}
 function resolveNode() {
   if (process.env.DSH_NODE && fs.existsSync(process.env.DSH_NODE)) return process.env.DSH_NODE;
   const roots = [
@@ -208,6 +221,7 @@ async function waitForWeb(timeoutMs) {
 function spawnBackend() {
   const runnerPath = path.join(__dirname, "dsh-runner.js");
   const cwd = process.env.DSH_WORKSPACE || app.getPath("home");
+  ensureNodeInPath();
   const env = { ...process.env };
   if (process.env.DSH_HOME) env.DSH_HOME = process.env.DSH_HOME;
 

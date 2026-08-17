@@ -38,6 +38,14 @@ function resolveDshBin() {
 }
 
 async function boot() {
+  // Ensure Node directory is in PATH
+  const nodeRoots = ['D:\\hclaw\\node', process.env.ProgramFiles ? path.join(process.env.ProgramFiles, 'nodejs') : null].filter(Boolean);
+  for (const root of nodeRoots) {
+    if (fs.existsSync(root) && !process.env.PATH.includes(root)) {
+      process.env.PATH = `${root};${process.env.PATH}`;
+    }
+  }
+
   const dshBin = resolveDshBin();
   if (!dshBin) {
     console.error("[dsh-runner] Failed to locate @deepseek-ai/dsh bin.js");
