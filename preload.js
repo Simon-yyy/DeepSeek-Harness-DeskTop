@@ -1,3 +1,34 @@
+
+// ---------------------------------------------------------------------------
+// Shield window.__ModuleLoader__ against duplicate registration fatal crashes
+// ---------------------------------------------------------------------------
+try {
+  let _moduleLoader = undefined;
+  Object.defineProperty(window, "__ModuleLoader__", {
+    get() {
+      return _moduleLoader;
+    },
+    set(loader) {
+      if (loader && typeof loader.load === "function") {
+        const originalLoad = loader.load;
+        loader.load = function(handoff) {
+          try {
+            originalLoad.call(this, handoff);
+          } catch (err) {
+            // 优雅容错：如果是重复注册错误，直接更新 factory，绝不抛出阻断异常
+            if (this.factories && handoff && handoff.id) {
+              this.factories.set(handoff.id, handoff.factory);
+            }
+          }
+        };
+      }
+      _moduleLoader = loader;
+    },
+    configurable: true,
+    enumerable: true
+  });
+} catch { /* ignore */ }
+
 const { ipcRenderer } = require("electron");
 
 function insertPathText(filePath) {
