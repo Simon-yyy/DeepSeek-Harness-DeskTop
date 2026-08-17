@@ -10,6 +10,24 @@ const path = require("node:path");
 app.setAppUserModelId("com.dsh.desktop");
 
 // ---------------------------------------------------------------------------
+// Global Error Boundary: Prevent silent crashes & display actionable dialog
+// ---------------------------------------------------------------------------
+process.on("uncaughtException", (err) => {
+  console.error("[dsh-desktop] Uncaught Exception:", err);
+  try {
+    dialog.showErrorBox(
+      "DSH Desktop 运行异常",
+      `应用程序遇到未捕获的错误:\n${err.message || String(err)}\n\n堆栈信息:\n${(err.stack || "").slice(0, 500)}`
+    );
+  } catch {}
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[dsh-desktop] Unhandled Rejection:", reason);
+});
+
+
+// ---------------------------------------------------------------------------
 // Single Instance Lock: prevent duplicate apps, focus existing on reopen
 // ---------------------------------------------------------------------------
 const gotTheLock = app.requestSingleInstanceLock();
