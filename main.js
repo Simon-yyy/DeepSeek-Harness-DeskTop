@@ -370,7 +370,19 @@ function createTray(appIcon) {
           if (mainWindow) {
             mainWindow.show();
             mainWindow.focus();
-            mainWindow.loadURL(WEB_URL);          }
+            mainWindow.loadURL(WEB_URL);
+
+  // 插件加载临时竞争态自愈重试
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.webContents.executeJavaScript(`
+      (function() {
+        if (document.body && document.body.innerText && document.body.innerText.includes("Failed to load plugins")) {
+          setTimeout(function() { window.location.reload(); }, 600);
+        }
+      })()
+    `).catch(() => {});
+  });
+          }
         },
       },
       {
@@ -436,9 +448,20 @@ function createWindow() {
     event.preventDefault();
   });
 
-  // Zoom shortcuts (Ctrl + Plus, Ctrl + Minus, Ctrl + 0)
+  // Keyboard shortcuts: Zoom (Ctrl + / - / 0) & Reload (F5, Ctrl + R)
   mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.key === "F5") {
+      mainWindow.reload();
+      event.preventDefault();
+      return;
+    }
     if (input.control || input.meta) {
+      if (input.key.toLowerCase() === "r") {
+        if (input.shift) mainWindow.webContents.reloadIgnoringCache();
+        else mainWindow.reload();
+        event.preventDefault();
+        return;
+      }
       if (input.key === "=" || input.key === "+") {
         const currentZoom = mainWindow.webContents.getZoomFactor();
         mainWindow.webContents.setZoomFactor(Math.min(currentZoom + 0.1, 2.0));
