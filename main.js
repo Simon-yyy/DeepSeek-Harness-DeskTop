@@ -533,6 +533,7 @@ app.on("second-instance", () => {
 });
 
 app.whenReady().then(async () => {
+  if (session && session.defaultSession) { session.defaultSession.clearCache().catch(() => {}); session.defaultSession.clearCodeCaches({}).catch(() => {}); }
   ensureBundledSkills();
   // Register global summon shortcut: Ctrl + Shift + D
   try {
