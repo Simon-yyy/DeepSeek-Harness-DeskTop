@@ -237,58 +237,50 @@ async function waitForWeb(timeoutMs) {
 }
 
 function spawnBackend() {
-  const runnerPath = path.join(__dirname, "dsh-runner.js");
   const cwd = process.env.DSH_WORKSPACE || app.getPath("home");
   ensureNodeInPath();
   const env = { ...process.env };
   if (process.env.DSH_HOME) env.DSH_HOME = process.env.DSH_HOME;
 
+  const nodeBin = resolveNode();
+  const dshBin = resolveDshBin();
   let child;
-  // 路线 1：首选 Electron 原生 utilityProcess 内置直启（强生命周期绑定、0 孤儿进程）
-  if (utilityProcess && fs.existsSync(runnerPath)) {
-    console.log("[dsh-desktop] Spawning backend natively via Electron utilityProcess.fork");
-    child = utilityProcess.fork(runnerPath, [], {
+
+  console.log("[dsh-desktop] Starting DSH Web Kernel via Node process...");
+  console.log("[dsh-desktop] nodeBin:", nodeBin, "dshBin:", dshBin);
+
+  if (dshBin && /\.cmd$/i.test(dshBin)) {
+    child = spawn(dshBin, ["web"], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
+  } else if (dshBin) {
+    child = spawn(nodeBin, [dshBin, "web"], {
       cwd,
       env,
       stdio: "pipe",
-      serviceName: "dsh-web-kernel",
+      windowsHide: true,
     });
-
-    if (child.stdout) {
-      child.stdout.on("data", (data) => {
-        const str = data.toString().trim();
-        if (str) console.log("[DSH Kernel]", str);
-      });
-    }
-    if (child.stderr) {
-      child.stderr.on("data", (data) => {
-        const str = data.toString().trim();
-        if (str) console.warn("[DSH Kernel Error]", str);
-      });
-    }
   } else {
-    // 降级兜底：传统外部 Node.js / npx 启动
-    const nodeBin = resolveNode();
-    const dshBin = resolveDshBin();
-    if (dshBin && /\.cmd$/i.test(dshBin)) {
-      child = spawn(dshBin, ["--profile", "web"], { cwd, env, stdio: "ignore", windowsHide: true, shell: true });
-    } else if (dshBin) {
-      const runEnv = { ...env };
-      if (path.resolve(nodeBin) === path.resolve(process.execPath)) runEnv.ELECTRON_RUN_AS_NODE = "1";
-      child = spawn(nodeBin, [dshBin, "--profile", "web"], {
-        cwd,
-        env: runEnv,
-        stdio: "ignore",
-        windowsHide: true,
-      });
-    } else {
-      child = spawn("npx", ["-y", "@deepseek-ai/dsh", "--profile", "web"], { cwd, env, stdio: "ignore", windowsHide: true, shell: true });
-    }
+    child = spawn("npx", ["-y", "@deepseek-ai/dsh", "web"], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
+  }
+
+  if (child.stdout) {
+    child.stdout.on("data", (data) => {
+      const str = data.toString().trim();
+      if (str) console.log("[DSH Kernel]", str);
+    });
+  }
+  if (child.stderr) {
+    child.stderr.on("data", (data) => {
+      const str = data.toString().trim();
+      if (str) console.warn("[DSH Kernel Error]", str);
+    });
   }
 
   backendSpawnedByUs = true;
   backendProc = child;
-  child.on("exit", () => { backendProc = null; });
+  child.on("exit", (code) => {
+    console.log("[dsh-desktop] DSH Backend exited with code:", code);
+    backendProc = null;
+  });
   return child;
 }
 

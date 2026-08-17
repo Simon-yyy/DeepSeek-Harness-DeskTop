@@ -55,7 +55,11 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "shortcutName": "DSH Desktop"
-    }
+    },
+    "afterAllArtifactBuild": "./scripts/after-build.js",
+    "asarUnpack": [
+      "dsh-runner.js"
+    ]
   },
   "repository": {
     "type": "git",
