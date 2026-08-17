@@ -206,27 +206,54 @@ async function waitForWeb(timeoutMs) {
 }
 
 function spawnBackend() {
-  const nodeBin = resolveNode();
-  const dshBin = resolveDshBin();
+  const runnerPath = path.join(__dirname, "dsh-runner.js");
   const cwd = process.env.DSH_WORKSPACE || app.getPath("home");
   const env = { ...process.env };
   if (process.env.DSH_HOME) env.DSH_HOME = process.env.DSH_HOME;
 
   let child;
-  if (dshBin && /\.cmd$/i.test(dshBin)) {
-    child = spawn(dshBin, ["--profile", "web"], { cwd, env, stdio: "ignore", windowsHide: true, shell: true });
-  } else if (dshBin) {
-    const runEnv = { ...env };
-    if (path.resolve(nodeBin) === path.resolve(process.execPath)) runEnv.ELECTRON_RUN_AS_NODE = "1";
-    child = spawn(nodeBin, [dshBin, "--profile", "web"], {
+  // 路线 1：首选 Electron 原生 utilityProcess 内置直启（强生命周期绑定、0 孤儿进程）
+  if (utilityProcess && fs.existsSync(runnerPath)) {
+    console.log("[dsh-desktop] Spawning backend natively via Electron utilityProcess.fork");
+    child = utilityProcess.fork(runnerPath, [], {
       cwd,
-      env: runEnv,
-      stdio: "ignore",
-      windowsHide: true,
+      env,
+      stdio: "pipe",
+      serviceName: "dsh-web-kernel",
     });
+
+    if (child.stdout) {
+      child.stdout.on("data", (data) => {
+        const str = data.toString().trim();
+        if (str) console.log("[DSH Kernel]", str);
+      });
+    }
+    if (child.stderr) {
+      child.stderr.on("data", (data) => {
+        const str = data.toString().trim();
+        if (str) console.warn("[DSH Kernel Error]", str);
+      });
+    }
   } else {
-    child = spawn("npx", ["-y", "@deepseek-ai/dsh", "--profile", "web"], { cwd, env, stdio: "ignore", windowsHide: true, shell: true });
+    // 降级兜底：传统外部 Node.js / npx 启动
+    const nodeBin = resolveNode();
+    const dshBin = resolveDshBin();
+    if (dshBin && /\.cmd$/i.test(dshBin)) {
+      child = spawn(dshBin, ["--profile", "web"], { cwd, env, stdio: "ignore", windowsHide: true, shell: true });
+    } else if (dshBin) {
+      const runEnv = { ...env };
+      if (path.resolve(nodeBin) === path.resolve(process.execPath)) runEnv.ELECTRON_RUN_AS_NODE = "1";
+      child = spawn(nodeBin, [dshBin, "--profile", "web"], {
+        cwd,
+        env: runEnv,
+        stdio: "ignore",
+        windowsHide: true,
+      });
+    } else {
+      child = spawn("npx", ["-y", "@deepseek-ai/dsh", "--profile", "web"], { cwd, env, stdio: "ignore", windowsHide: true, shell: true });
+    }
   }
+
   backendSpawnedByUs = true;
   backendProc = child;
   child.on("exit", () => { backendProc = null; });
@@ -235,15 +262,21 @@ function spawnBackend() {
 
 function stopBackendIfOurs() {
   if (backendSpawnedByUs && backendProc) {
-    const pid = backendProc.pid;
-    if (process.platform === "win32" && pid) {
-      try {
-        // Windows 下必须使用 taskkill /T /F 彻底销毁子进程树，防止残留 zombie node 进程占用 3080 端口
-        spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
-      } catch { /* ignore */ }
-    } else if (!backendProc.killed) {
-      try { backendProc.kill("SIGKILL"); } catch { /* ignore */ }
-    }
+    try {
+      if (typeof backendProc.postMessage === "function") {
+        // utilityProcess: 发送优雅退出信号并销毁
+        backendProc.postMessage({ type: "shutdown" });
+        backendProc.kill();
+      } else {
+        // 外部 spawn 进程：Windows 强制杀进程树
+        const pid = backendProc.pid;
+        if (process.platform === "win32" && pid) {
+          spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
+        } else if (!backendProc.killed) {
+          backendProc.kill("SIGKILL");
+        }
+      }
+    } catch { /* ignore */ }
   }
   backendProc = null;
   backendSpawnedByUs = false;
