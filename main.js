@@ -234,8 +234,16 @@ function spawnBackend() {
 }
 
 function stopBackendIfOurs() {
-  if (backendSpawnedByUs && backendProc && !backendProc.killed) {
-    try { backendProc.kill(); } catch { /* ignore */ }
+  if (backendSpawnedByUs && backendProc) {
+    const pid = backendProc.pid;
+    if (process.platform === "win32" && pid) {
+      try {
+        // Windows 下必须使用 taskkill /T /F 彻底销毁子进程树，防止残留 zombie node 进程占用 3080 端口
+        spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
+      } catch { /* ignore */ }
+    } else if (!backendProc.killed) {
+      try { backendProc.kill("SIGKILL"); } catch { /* ignore */ }
+    }
   }
   backendProc = null;
   backendSpawnedByUs = false;
@@ -480,11 +488,21 @@ app.whenReady().then(async () => {
   });
 });
 
+app.on("before-quit", () => {
+  isQuitting = true;
+  stopBackendIfOurs();
+});
+
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
+  stopBackendIfOurs();
 });
 
 app.on("window-all-closed", () => {
   stopBackendIfOurs();
   app.quit();
+});
+
+process.on("exit", () => {
+  stopBackendIfOurs();
 });
