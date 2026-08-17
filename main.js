@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, dialog, nativeImage, ipcMain, Tray, Menu, globalShortcut, utilityProcess } = require("electron");
+const { app, BrowserWindow, shell, dialog, nativeImage, ipcMain, Tray, Menu, globalShortcut, utilityProcess, session } = require("electron");
 const { spawn, spawnSync } = require("node:child_process");
 const http = require("node:http");
 const https = require("node:https");
