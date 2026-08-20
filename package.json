@@ -58,7 +58,8 @@
     },
     "afterAllArtifactBuild": "./scripts/after-build.js",
     "asarUnpack": [
-      "dsh-runner.js"
+      "bundled-skills/**/*",
+      "bundled-skills"
     ]
   },
   "repository": {

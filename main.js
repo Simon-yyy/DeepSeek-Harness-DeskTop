@@ -241,6 +241,7 @@ function spawnBackend() {
   ensureNodeInPath();
   const env = { ...process.env };
   if (process.env.DSH_HOME) env.DSH_HOME = process.env.DSH_HOME;
+  env.DSH_BUNDLED_SKILL_DIR = path.join(app.getPath("home"), ".dsh", "skills");
 
   const nodeBin = resolveNode();
   const dshBin = resolveDshBin();
@@ -310,30 +311,59 @@ function stopBackendIfOurs() {
 // ---------------------------------------------------------------------------
 // Auto-initialize 35 bundled skills into user's ~/.dsh/skills on first run
 // ---------------------------------------------------------------------------
+// Auto-initialize 35 bundled skills into user's ~/.dsh/skills on first run
+// ---------------------------------------------------------------------------
+// Auto-initialize 35 bundled skills into user's ~/.dsh/skills & ~/.agents/skills
+// ---------------------------------------------------------------------------
+function copyDirSyncSafe(src, dest) {
+  if (!fs.existsSync(dest)) {
+    fs.mkdirSync(dest, { recursive: true });
+  }
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirSyncSafe(srcPath, destPath);
+    } else if (entry.isFile()) {
+      if (!fs.existsSync(destPath) || fs.statSync(destPath).size === 0) {
+        const data = fs.readFileSync(srcPath);
+        fs.writeFileSync(destPath, data);
+      }
+    }
+  }
+}
+
 function ensureBundledSkills() {
   try {
-    const userDshSkills = path.join(app.getPath("home"), ".dsh", "skills");
-    const bundledSkills = path.join(__dirname, "bundled-skills");
-    if (fs.existsSync(bundledSkills)) {
-      if (!fs.existsSync(userDshSkills)) {
-        fs.mkdirSync(userDshSkills, { recursive: true });
+    const userHome = process.env.USERPROFILE || process.env.HOME || app.getPath("home");
+    const targetDirs = [
+      path.join(userHome, ".dsh", "skills"),
+      path.join(userHome, ".agents", "skills")
+    ];
+
+    const candidates = [
+      path.join(__dirname.replace("app.asar", "app.asar.unpacked"), "bundled-skills"),
+      path.join(__dirname, "bundled-skills"),
+      process.resourcesPath ? path.join(process.resourcesPath, "app.asar.unpacked", "bundled-skills") : null,
+      process.resourcesPath ? path.join(process.resourcesPath, "bundled-skills") : null,
+    ].filter(Boolean);
+
+    const sourceSkills = candidates.find((p) => fs.existsSync(p));
+
+    if (sourceSkills) {
+      for (const targetDir of targetDirs) {
+        copyDirSyncSafe(sourceSkills, targetDir);
       }
-      const entries = fs.readdirSync(bundledSkills);
-      for (const entry of entries) {
-        const src = path.join(bundledSkills, entry);
-        const target = path.join(userDshSkills, entry);
-        if (!fs.existsSync(target)) {
-          fs.cpSync(src, target, { recursive: true });
-        }
-      }
-      console.log("[dsh-desktop] Bundled skills checked and initialized.");
+      console.log("[dsh-desktop] 35 Bundled skills successfully initialized from: " + sourceSkills);
+    } else {
+      console.warn("[dsh-desktop] Bundled skills source folder not found in candidates:", candidates);
     }
   } catch (err) {
     console.warn("[dsh-desktop] ensureBundledSkills warning:", err.message);
   }
 }
 
-// Window & System Tray
 // ---------------------------------------------------------------------------
 function getAppIcon() {
   const iconCandidate = fs.existsSync(path.join(__dirname, "build", "icon.ico"))
