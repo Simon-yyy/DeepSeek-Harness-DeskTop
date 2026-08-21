@@ -106,3 +106,70 @@ window.addEventListener(
   },
   true
 );
+
+// ---------------------------------------------------------------------------
+// Native Desktop Hook: Enable "立即重启" button in dshmarket & trigger IPC restart
+// ---------------------------------------------------------------------------
+function scanAndEnableRestartButtons() {
+  const buttons = document.querySelectorAll("button, [role='button'], a");
+  buttons.forEach((el) => {
+    const text = (el.textContent || el.innerText || "").trim();
+    if (text.includes("立即重启") || text === "重启" || text.includes("重启后生效")) {
+      if (el.dataset.dshRestartHooked) return;
+      el.dataset.dshRestartHooked = "true";
+
+      // 解除禁用属性与禁用样式
+      if (el.hasAttribute("disabled")) el.removeAttribute("disabled");
+      el.disabled = false;
+      el.style.pointerEvents = "auto";
+      el.style.cursor = "pointer";
+      el.style.opacity = "1";
+      el.style.backgroundColor = "var(--primary-color, #1a73e8)";
+      el.style.color = "#ffffff";
+      el.style.transition = "all 0.2s ease";
+      el.title = "⚡ 点击将在 DSH Desktop 桌面端立即重启后台服务并使变更生效";
+
+      // 绑定桌面端原生重启事件
+      el.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        const originalText = el.innerText;
+        el.innerText = "⚡ 正在重启 DSH 服务...";
+        el.disabled = true;
+        el.style.opacity = "0.7";
+        el.style.cursor = "wait";
+
+        try {
+          const res = await ipcRenderer.invoke("restart-backend-service");
+          if (!res || !res.success) {
+            el.innerText = "❌ 重启失败，点击重试";
+            el.disabled = false;
+            el.style.opacity = "1";
+            el.style.cursor = "pointer";
+            if (res && res.error) alert("重启服务遇到异常: " + res.error);
+          }
+        } catch (err) {
+          el.innerText = "❌ 重启失败，点击重试";
+          el.disabled = false;
+          el.style.opacity = "1";
+          el.style.cursor = "pointer";
+          alert("调用重启失败: " + err.message);
+        }
+      }, true);
+    }
+  });
+}
+
+// 页面加载就绪及后续 DOM 变动时持续监听
+window.addEventListener("DOMContentLoaded", () => {
+  scanAndEnableRestartButtons();
+  const observer = new MutationObserver(() => {
+    scanAndEnableRestartButtons();
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+});
+
+setInterval(scanAndEnableRestartButtons, 1000);
+

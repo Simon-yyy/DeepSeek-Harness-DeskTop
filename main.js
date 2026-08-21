@@ -325,6 +325,29 @@ function stopBackendIfOurs() {
 }
 
 // ---------------------------------------------------------------------------
+// Native Desktop IPC: Restart Backend Service & Reload Web Page
+// ---------------------------------------------------------------------------
+ipcMain.handle("restart-backend-service", async () => {
+  console.log("[dsh-desktop] Triggering native restart of DSH Backend...");
+  try {
+    stopBackendIfOurs();
+    let retries = 25;
+    while ((await portInUse(WEB_PORT)) && retries-- > 0) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    spawnBackend();
+    const ready = await waitForWeb(30_000);
+    if (ready && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.reload();
+      return { success: true };
+    }
+    return { success: ready };
+  } catch (err) {
+    console.error("[dsh-desktop] Failed to restart backend service:", err);
+    return { success: false, error: err.message };
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Auto-initialize 35 bundled skills into user's ~/.dsh/skills on first run
 // ---------------------------------------------------------------------------
