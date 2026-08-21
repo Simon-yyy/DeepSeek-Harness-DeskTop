@@ -10,14 +10,33 @@ function resolveDshBin() {
   if (process.env.DSH_BIN && fs.existsSync(process.env.DSH_BIN)) {
     return process.env.DSH_BIN;
   }
+  const globalCandidates = [
+    path.join("D:\\hclaw\\node", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
+    process.env.APPDATA ? path.join(process.env.APPDATA, "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
+    process.env.ProgramFiles ? path.join(process.env.ProgramFiles, "nodejs", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
+  ].filter(Boolean);
+
+  let best = null;
+  let bestTime = 0;
+
+  for (const candidate of globalCandidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        const st = fs.statSync(candidate);
+        if (st.mtimeMs > bestTime) {
+          bestTime = st.mtimeMs;
+          best = candidate;
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
   const cacheRoots = [
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "npm-cache", "_npx") : null,
     process.env.npm_config_cache ? path.join(process.env.npm_config_cache, "_npx") : null,
     path.join(process.env.USERPROFILE || "", ".npm", "_npx"),
   ].filter(Boolean);
 
-  let best = null;
-  let bestTime = 0;
   for (const npxRoot of cacheRoots) {
     if (!fs.existsSync(npxRoot)) continue;
     let dirs;
