@@ -58,8 +58,119 @@ const REPO_OWNER = "Simon-yyy";
 const REPO_NAME = "DeepSeek-Harness-DeskTop";
 
 // ---------------------------------------------------------------------------
-// Auto-Updater: Check GitHub Releases for newer version
+// Auto-Updater: In-App Download, Auto-Install & GitHub Release Sync
 // ---------------------------------------------------------------------------
+let isDownloadingUpdate = false;
+
+function downloadFile(url, destPath, onProgress) {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const options = {
+      hostname: parsedUrl.hostname,
+      path: parsedUrl.pathname + parsedUrl.search,
+      headers: {
+        "User-Agent": "DSH-Desktop-App",
+      },
+    };
+
+    https.get(options, (res) => {
+      // 处理 HTTP 301 / 302 / 307 / 308 重定向 (GitHub Releases -> AWS S3 / CDN)
+      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+        return resolve(downloadFile(res.headers.location, destPath, onProgress));
+      }
+
+      if (res.statusCode !== 200) {
+        return reject(new Error(`下载失败，服务器返回 HTTP ${res.statusCode}`));
+      }
+
+      const totalBytes = parseInt(res.headers["content-length"] || "0", 10);
+      let downloadedBytes = 0;
+      const fileStream = fs.createWriteStream(destPath);
+
+      res.on("data", (chunk) => {
+        downloadedBytes += chunk.length;
+        fileStream.write(chunk);
+        if (onProgress && totalBytes > 0) {
+          const percent = Math.round((downloadedBytes / totalBytes) * 100);
+          onProgress(percent, downloadedBytes, totalBytes);
+        }
+      });
+
+      res.on("end", () => {
+        fileStream.end();
+        resolve(destPath);
+      });
+
+      res.on("error", (err) => {
+        fileStream.destroy();
+        fs.unlink(destPath, () => {});
+        reject(err);
+      });
+    }).on("error", reject);
+  });
+}
+
+function startInAppUpdate(assetUrl, newVersion) {
+  if (isDownloadingUpdate) {
+    dialog.showMessageBox(mainWindow || null, {
+      type: "info",
+      title: "正在更新",
+      message: "新版本安装包正在后台下载中，请稍候...",
+    });
+    return;
+  }
+
+  isDownloadingUpdate = true;
+  const tempDir = app.getPath("temp");
+  const installerPath = path.join(tempDir, `DSH-Desktop-Setup-${newVersion}.exe`);
+
+  dialog.showMessageBox(mainWindow || null, {
+    type: "info",
+    title: "⚡ 开始下载更新",
+    message: `已开始下载全新版本 v${newVersion} 安装包。\n下载完成后将自动启动安装并重启应用，请稍候！`,
+    buttons: ["知道了"],
+  });
+
+  downloadFile(assetUrl, installerPath, (_percent, _downloaded, _total) => {
+    // 进度回调
+  }).then(() => {
+    isDownloadingUpdate = false;
+    dialog.showMessageBox(mainWindow || null, {
+      type: "info",
+      title: "🎉 下载完成",
+      message: `v${newVersion} 安装包已下载完成！\n点击确定后应用将自动退出并启动安装升级。`,
+      buttons: ["立即安装升级"],
+      defaultId: 0,
+    }).then(() => {
+      try {
+        // 启动下载好的 NSIS 安装包覆盖安装
+        spawn(installerPath, ["--updated"], {
+          detached: true,
+          stdio: "ignore",
+        }).unref();
+        isQuitting = true;
+        stopBackendIfOurs();
+        app.quit();
+      } catch (err) {
+        dialog.showErrorBox("启动安装程序失败", `无法自动执行安装包: ${err.message}`);
+      }
+    });
+  }).catch((err) => {
+    isDownloadingUpdate = false;
+    dialog.showMessageBox(mainWindow || null, {
+      type: "error",
+      title: "更新下载失败",
+      message: `下载更新包遇到错误: ${err.message}\n您可以前往浏览器手动下载。`,
+      buttons: ["前往官网下载", "取消"],
+      defaultId: 0,
+    }).then(({ response }) => {
+      if (response === 0) {
+        shell.openExternal(`https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
+      }
+    });
+  });
+}
+
 function checkForUpdates(silent = true) {
   const options = {
     hostname: "api.github.com",
@@ -69,7 +180,7 @@ function checkForUpdates(silent = true) {
       "User-Agent": "DSH-Desktop-App",
       "Accept": "application/vnd.github.v3+json",
     },
-    timeout: 5000,
+    timeout: 8000,
   };
 
   const req = https.request(options, (res) => {
@@ -86,15 +197,23 @@ function checkForUpdates(silent = true) {
         const currentVer = app.getVersion();
 
         if (latestTag && compareVersions(latestTag, currentVer) > 0) {
+          const exeAsset = (release.assets || []).find((a) => a.name && a.name.endsWith(".exe") && !a.name.includes("blockmap"));
+
           dialog.showMessageBox(mainWindow || null, {
             type: "info",
-            title: "🎉 发现 DSH Desktop 新版本",
-            message: `发现全新版本 v${latestTag}（当前版本 v${currentVer}）！\n\n更新日志：\n${release.body ? release.body.slice(0, 300) : "性能与稳定性改进"}\n\n是否立即前往下载最新安装包？`,
-            buttons: ["立即前往下载", "稍后提醒"],
+            title: `🎉 发现 DSH Desktop 新版本 (v${latestTag})`,
+            message: `发现全新版本 v${latestTag}（当前版本 v${currentVer}）！\n\n更新说明：\n${release.body ? release.body.slice(0, 350) : "性能与稳定性改进"}\n\n是否立即在应用内自动下载并安装升级？`,
+            buttons: ["🚀 立即下载并安装", "在浏览器中查看", "稍后提醒"],
             defaultId: 0,
-            cancelId: 1,
+            cancelId: 2,
           }).then(({ response }) => {
             if (response === 0) {
+              if (exeAsset && exeAsset.browser_download_url) {
+                startInAppUpdate(exeAsset.browser_download_url, latestTag);
+              } else {
+                shell.openExternal(release.html_url || `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
+              }
+            } else if (response === 1) {
               shell.openExternal(release.html_url || `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
             }
           });
