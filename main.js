@@ -468,6 +468,27 @@ ipcMain.handle("restart-backend-service", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Native Desktop IPC: Get App Info & Manual Update Check
+// ---------------------------------------------------------------------------
+ipcMain.handle("get-app-info", () => {
+  return {
+    version: app.getVersion(),
+    name: "DSH Desktop",
+    kernelVersion: "0.1.0-rc.8",
+    electronVersion: process.versions.electron,
+    nodeVersion: process.versions.node,
+    platform: process.platform,
+    arch: process.arch,
+  };
+});
+
+ipcMain.handle("check-for-updates-manual", () => {
+  checkForUpdates(false);
+  return { success: true };
+});
+
+
+// ---------------------------------------------------------------------------
 // Auto-initialize 35 bundled skills into user's ~/.dsh/skills on first run
 // ---------------------------------------------------------------------------
 // Auto-initialize 35 bundled skills into user's ~/.dsh/skills on first run

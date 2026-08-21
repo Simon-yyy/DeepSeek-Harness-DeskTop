@@ -162,14 +162,217 @@ function scanAndEnableRestartButtons() {
   });
 }
 
-// 页面加载就绪及后续 DOM 变动时持续监听
+// ---------------------------------------------------------------------------
+// Native Desktop Hook: Inject "关于 DSH Desktop" into Settings Modal
+// ---------------------------------------------------------------------------
+let cachedAppInfo = { version: "1.1.2", kernelVersion: "0.1.0-rc.8" };
+ipcRenderer.invoke("get-app-info").then((info) => {
+  if (info) cachedAppInfo = info;
+}).catch(() => {});
+
+function createAboutPanelContent() {
+  const panel = document.createElement("div");
+  panel.id = "dsh-desktop-about-panel";
+  panel.style.cssText = `
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+    padding: 24px 32px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text-color, #1f2937);
+  `;
+
+  panel.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color, #e5e7eb);">
+      <div style="width: 56px; height: 56px; border-radius: 14px; background: #0f172a; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V15H13V17ZM13 13H11V7H13V13Z" fill="#38bdf8"/>
+        </svg>
+      </div>
+      <div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <h2 style="margin: 0; font-size: 20px; font-weight: 700; color: inherit;">DSH Desktop</h2>
+          <span style="font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 9999px; background: #10b981; color: #ffffff;">v${cachedAppInfo.version}</span>
+        </div>
+        <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.75;">DeepSeek Harness 现代化桌面客户端工作台</p>
+      </div>
+    </div>
+
+    <!-- 检查更新核心操作区 -->
+    <div style="background: var(--bg-secondary, #f8fafc); border: 1px solid var(--border-color, #e2e8f0); border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <div style="font-weight: 600; font-size: 14px; margin-bottom: 2px;">软件更新状态</div>
+          <div style="font-size: 12px; opacity: 0.7;">当前已是稳定版本，支持应用内一键下载覆盖安装升级</div>
+        </div>
+        <button id="dsh-check-update-btn" style="
+          padding: 8px 18px;
+          background: #2563eb;
+          color: #ffffff;
+          border: none;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 6px rgba(37,99,235,0.25);
+        ">
+          <span>🔍 检查更新...</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 核心亮点与更新内容 -->
+    <div style="margin-bottom: 20px;">
+      <h3 style="font-size: 15px; font-weight: 600; margin: 0 0 12px 0;">🌟 核心能力与最新特性</h3>
+      <div style="display: grid; gap: 10px; font-size: 13px; line-height: 1.6;">
+        <div style="padding: 10px 14px; background: var(--bg-secondary, #f8fafc); border-radius: 8px; border-left: 3px solid #2563eb;">
+          <strong>🚀 应用内一键自动升级 (In-App Auto Update)</strong>：发现新版本时一键在应用内静默流式下载安装包，下载完成自动启动升级并重启应用。
+        </div>
+        <div style="padding: 10px 14px; background: var(--bg-secondary, #f8fafc); border-radius: 8px; border-left: 3px solid #10b981;">
+          <strong>⚡ 插件市场【立即重启】原生解锁</strong>：安装插件后，插件市场的“立即重启”按钮可直接点击，自动重启后端并刷新页面生效。
+        </div>
+        <div style="padding: 10px 14px; background: var(--bg-secondary, #f8fafc); border-radius: 8px; border-left: 3px solid #8b5cf6;">
+          <strong>🖼️ ModLens 视觉直通</strong>：直接 Ctrl+V 粘贴剪贴板截图或拖入图片，底层自动拦截并转存为本地路径，消除模型不支持附件报错。
+        </div>
+        <div style="padding: 10px 14px; background: var(--bg-secondary, #f8fafc); border-radius: 8px; border-left: 3px solid #f59e0b;">
+          <strong>🤫 全静默后台执行</strong>：调用终端命令行时全面静默化，彻底消除频繁弹出的黑色终端窗口。
+        </div>
+        <div style="padding: 10px 14px; background: var(--bg-secondary, #f8fafc); border-radius: 8px; border-left: 3px solid #06b6d4;">
+          <strong>🧩 35 个工业级编程技能</strong>：内置 TDD 测试驱动、代码审查、架构设计等 35 个 Matt Pocock Skills，启动自动释放即用。
+        </div>
+      </div>
+    </div>
+
+    <!-- 内核与运行环境 -->
+    <div style="padding-top: 16px; border-top: 1px solid var(--border-color, #e5e7eb); font-size: 12px; opacity: 0.65; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+      <div>官方内核：<strong>@deepseek-ai/dsh@${cachedAppInfo.kernelVersion || '0.1.0-rc.8'}</strong></div>
+      <div>桌面框架：Electron ${cachedAppInfo.electronVersion || '33'}</div>
+    </div>
+  `;
+
+  // 绑定检查更新按钮事件
+  const checkBtn = panel.querySelector("#dsh-check-update-btn");
+  if (checkBtn) {
+    checkBtn.addEventListener("click", async () => {
+      checkBtn.innerText = "🔄 正在检查更新...";
+      checkBtn.style.opacity = "0.75";
+      checkBtn.disabled = true;
+      try {
+        await ipcRenderer.invoke("check-for-updates-manual");
+      } catch (err) {
+        alert("检查更新出错: " + err.message);
+      } finally {
+        setTimeout(() => {
+          checkBtn.innerText = "🔍 检查更新...";
+          checkBtn.style.opacity = "1";
+          checkBtn.disabled = false;
+        }, 2000);
+      }
+    });
+  }
+
+  return panel;
+}
+
+function injectAboutTabIntoSettings() {
+  const settingNavItems = document.querySelectorAll("nav button, div[role='tablist'] button, aside button, .settings-nav button, div[class*='nav'] button, div[class*='tab'] button, div[class*='menu'] button");
+  let marketTab = null;
+  let tabContainer = null;
+
+  for (const btn of settingNavItems) {
+    const text = (btn.textContent || "").trim();
+    if (text.includes("插件市场") || text.includes("Market") || text.includes("通用设置")) {
+      if (text.includes("插件市场")) marketTab = btn;
+      tabContainer = btn.parentElement;
+    }
+  }
+
+  if (!tabContainer) return;
+  if (tabContainer.querySelector(".dsh-about-custom-tab")) return;
+
+  const targetAnchor = marketTab || tabContainer.lastElementChild;
+  if (!targetAnchor) return;
+
+  // 克隆一个同款样式的 Tab 按钮
+  const aboutTab = targetAnchor.cloneNode(true);
+  aboutTab.className = targetAnchor.className + " dsh-about-custom-tab";
+  aboutTab.innerHTML = `
+    <span style="display: inline-flex; align-items: center; gap: 8px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+      </svg>
+      <span>关于</span>
+    </span>
+  `;
+
+  // 清除克隆可能带有的 active 样式
+  aboutTab.setAttribute("aria-selected", "false");
+  aboutTab.dataset.dshCustomTab = "about";
+
+  // 插入到 Tab 容器中（排在插件市场之后）
+  targetAnchor.after(aboutTab);
+
+  // 找到右侧的内容面板容器
+  const modalContentArea = tabContainer.nextElementSibling || tabContainer.parentElement.querySelector("main, section, div[class*='content'], div[class*='body']");
+  if (!modalContentArea) return;
+
+  let aboutContentPanel = modalContentArea.parentElement.querySelector("#dsh-desktop-about-panel");
+  if (!aboutContentPanel) {
+    aboutContentPanel = createAboutPanelContent();
+    modalContentArea.parentElement.appendChild(aboutContentPanel);
+  }
+
+  // 监听原始 Tab 点击：点击其他 Tab 时隐藏关于面板，恢复原生内容
+  const originalTabs = tabContainer.querySelectorAll("button:not(.dsh-about-custom-tab)");
+  originalTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      if (aboutContentPanel) aboutContentPanel.style.display = "none";
+      if (modalContentArea) modalContentArea.style.display = "";
+      aboutTab.style.background = "";
+      aboutTab.style.fontWeight = "";
+    });
+  });
+
+  // 点击“关于”Tab 逻辑
+  aboutTab.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // 切换 Tab 高亮状态
+    originalTabs.forEach((t) => {
+      t.classList.remove("active");
+      t.setAttribute("aria-selected", "false");
+    });
+    aboutTab.style.background = "var(--bg-secondary, rgba(0,0,0,0.06))";
+    aboutTab.style.fontWeight = "600";
+
+    // 隐藏默认内容，展示关于面板
+    if (modalContentArea) modalContentArea.style.display = "none";
+    if (aboutContentPanel) aboutContentPanel.style.display = "flex";
+  });
+}
+
+// 页面加载及 DOM 变动时持续监听
 window.addEventListener("DOMContentLoaded", () => {
   scanAndEnableRestartButtons();
+  injectAboutTabIntoSettings();
   const observer = new MutationObserver(() => {
     scanAndEnableRestartButtons();
+    injectAboutTabIntoSettings();
   });
   observer.observe(document.body, { childList: true, subtree: true });
 });
 
-setInterval(scanAndEnableRestartButtons, 1000);
+setInterval(() => {
+  scanAndEnableRestartButtons();
+  injectAboutTabIntoSettings();
+}, 1000);
+
 
