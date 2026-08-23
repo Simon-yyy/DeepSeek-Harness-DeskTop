@@ -71,8 +71,8 @@ async function boot() {
     process.exit(1);
   }
 
-  // Set up process argv to simulate `dsh web`
-  process.argv = [process.execPath, dshBin, "web"];
+  // Set up process argv to simulate `dsh web --no-open`
+  process.argv = [process.execPath, dshBin, "web", "--no-open"];
 
   // Ensure Node environment paths are available
   if (!process.env.DSH_HOME) {

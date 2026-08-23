@@ -372,7 +372,44 @@ async function waitForWeb(timeoutMs) {
   return false;
 }
 
+function sanitizeWebProfile() {
+  try {
+    const webPkgPath = path.join(app.getPath("home"), ".dsh", "profiles", "web", "package.json");
+    if (!fs.existsSync(webPkgPath)) return;
+    const pkg = JSON.parse(fs.readFileSync(webPkgPath, "utf8"));
+    let modified = false;
+
+    // 过滤掉任何仅适用于命令行终端且会导致 Web 模式抛出 TTY 致命异常的插件
+    const incompatiblePlugins = ["@deepseek-harness-tui/dsh-tui"];
+
+    if (pkg.dependencies) {
+      for (const p of incompatiblePlugins) {
+        if (pkg.dependencies[p]) {
+          delete pkg.dependencies[p];
+          modified = true;
+        }
+      }
+    }
+
+    if (pkg.dsh?.profile?.bundles && Array.isArray(pkg.dsh.profile.bundles)) {
+      const originalLen = pkg.dsh.profile.bundles.length;
+      pkg.dsh.profile.bundles = pkg.dsh.profile.bundles.filter(
+        (b) => !incompatiblePlugins.includes(b)
+      );
+      if (pkg.dsh.profile.bundles.length !== originalLen) modified = true;
+    }
+
+    if (modified) {
+      fs.writeFileSync(webPkgPath, JSON.stringify(pkg, null, 2), "utf8");
+      console.log("[dsh-desktop] Auto-healed web profile package.json (removed incompatible plugins).");
+    }
+  } catch (err) {
+    console.warn("[dsh-desktop] Note: web profile check skipped:", err.message);
+  }
+}
+
 function spawnBackend() {
+  sanitizeWebProfile();
   const cwd = process.env.DSH_WORKSPACE || app.getPath("home");
   ensureNodeInPath();
   const env = { ...process.env };
@@ -387,16 +424,16 @@ function spawnBackend() {
   console.log("[dsh-desktop] nodeBin:", nodeBin, "dshBin:", dshBin);
 
   if (dshBin && /\.cmd$/i.test(dshBin)) {
-    child = spawn(dshBin, ["web"], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
+    child = spawn(dshBin, ["web", "--no-open"], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
   } else if (dshBin) {
-    child = spawn(nodeBin, [dshBin, "web"], {
+    child = spawn(nodeBin, [dshBin, "web", "--no-open"], {
       cwd,
       env,
       stdio: "pipe",
       windowsHide: true,
     });
   } else {
-    child = spawn("npx", ["-y", "@deepseek-ai/dsh", "web"], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
+    child = spawn("npx", ["-y", "@deepseek-ai/dsh", "web", "--no-open"], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
   }
 
   if (child.stdout) {

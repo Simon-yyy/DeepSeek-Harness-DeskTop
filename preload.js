@@ -108,6 +108,43 @@ window.addEventListener(
 );
 
 // ---------------------------------------------------------------------------
+// Native Desktop Hook: Universal Smooth Wheel Scrolling Fix for Modals & Lists
+// ---------------------------------------------------------------------------
+function enableSmoothWheelScrollFix() {
+  window.addEventListener(
+    "wheel",
+    (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || e.deltaY === 0) return;
+
+      let el = e.target;
+      let scrollableContainer = null;
+
+      while (el && el !== document.body && el !== document.documentElement) {
+        const style = window.getComputedStyle(el);
+        const overflowY = style.overflowY;
+        const isScrollable = (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") && el.scrollHeight > el.clientHeight;
+
+        if (isScrollable) {
+          const atTop = e.deltaY < 0 && el.scrollTop <= 0;
+          const atBottom = e.deltaY > 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+
+          if (!atTop && !atBottom) {
+            scrollableContainer = el;
+            break;
+          }
+        }
+        el = el.parentElement;
+      }
+
+      if (scrollableContainer) {
+        scrollableContainer.scrollTop += e.deltaY;
+      }
+    },
+    { passive: true, capture: true }
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Native Desktop Hook: Enable "立即重启" button in dshmarket & trigger IPC restart
 // ---------------------------------------------------------------------------
 function scanAndEnableRestartButtons() {
@@ -163,9 +200,436 @@ function scanAndEnableRestartButtons() {
 }
 
 // ---------------------------------------------------------------------------
-// Native Desktop Hook: Inject "关于 DSH Desktop" into Settings Modal
+// Native Desktop Theme: 🌸 彬哥の VS Code 4 款经典主题原生引擎
+// 1. escook Dark (经典暗黑)
+// 2. escook Dark Soft (柔和暗黑)
+// 3. escook Light (经典紫韵浅色)
+// 4. escook Light Soft (柔和浅色)
 // ---------------------------------------------------------------------------
-let cachedAppInfo = { version: "1.1.4", kernelVersion: "0.1.0-rc.8" };
+// ---------------------------------------------------------------------------
+// Native Desktop Theme: 🌸 彬哥の VS Code 4 款经典主题原生引擎 (DeepSeek Harness 原生 --dsw-* 适配)
+// 1. escook Dark (经典暗黑)
+// 2. escook Dark Soft (柔和暗黑)
+// 3. escook Light (经典紫韵浅色)
+// 4. escook Light Soft (柔和浅色)
+// ---------------------------------------------------------------------------
+const ESCOOK_THEMES = {
+  "dark": {
+    name: "escook Dark (经典暗黑)",
+    desc: "标志性暖橙高亮与深暗极客底色",
+    type: "dark",
+    colorPreview: "#EF820C",
+    bgPreview: "#252526",
+    css: `
+      :root, html, body, body[data-ds-dark-theme] {
+        --dsw-alias-bg-base: #252526 !important;
+        --dsw-alias-bg-layer-1: #202020 !important;
+        --dsw-alias-bg-layer-2: #29292c !important;
+        --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.6) !important;
+        --dsw-specific-sidebar-fill: #202020 !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(255, 255, 255, 0.08) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(239, 130, 12, 0.18) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #EF820C !important;
+        --dsw-specific-input-major: #29292c !important;
+        --dsw-specific-bubble: #29292c !important;
+        --dsw-specific-menu: #29292c !important;
+        --dsw-hovercard-bg: #29292c !important;
+        --dsw-alias-tooltip-bg: #202020 !important;
+        --dsw-alias-button-elevated-fill: #29292c !important;
+        --dsw-alias-button-floating-hover: #333336 !important;
+        --dsw-alias-brand-primary: #EF820C !important;
+        --dsw-alias-button-primary-fill: #EF820C !important;
+        --dsw-alias-button-primary-hover: #ff9940 !important;
+        --dsw-alias-label-primary-foreground: #ffffff !important;
+        --dsw-alias-label-primary: #fafafa !important;
+        --dsw-alias-label-secondary: #cccccc !important;
+        --dsw-alias-label-tertiary: #999999 !important;
+        --dsw-alias-label-dimmed: #777777 !important;
+        --dsw-alias-label-caption: #888888 !important;
+        --dsw-alias-interactive-bg-hover: rgba(255, 255, 255, 0.08) !important;
+        --dsw-alias-interactive-bg-active: rgba(255, 255, 255, 0.14) !important;
+        --dsw-alias-border-l1: #383838 !important;
+        --dsw-alias-border-l2: #2e2e2e !important;
+        --dsw-alias-border-l3: #444444 !important;
+        --dsw-alias-border-l4: #555555 !important;
+        --dsw-alias-markdown-code-block: #1e1e1e !important;
+        --dsw-alias-markdown-code-block-banner: #252526 !important;
+        --dsw-alias-scrollbar-bg-l2: #383838 !important;
+        --dsw-alias-scrollbar-hover-l2: #EF820C !important;
+      }
+      body, body[data-ds-dark-theme] { background-color: #252526 !important; color: #fafafa !important; }
+      pre, code, [class*="codeBlock"] {
+        background-color: #1e1e1e !important;
+        color: #d4d4d4 !important;
+        border-color: #383838 !important;
+      }
+    `
+  },
+  "dark-soft": {
+    name: "escook Dark Soft (柔和暗黑)",
+    desc: "优雅暗夜紫调、琥珀金按钮与高对比度语法高亮",
+    type: "dark",
+    colorPreview: "#ffcc66",
+    bgPreview: "#1f2430",
+    css: `
+      :root, html, body, body[data-ds-dark-theme] {
+        --dsw-alias-bg-base: #1f2430 !important;
+        --dsw-alias-bg-layer-1: #191e2a !important;
+        --dsw-alias-bg-layer-2: #232834 !important;
+        --dsw-alias-bg-mask-1: rgba(15, 18, 26, 0.65) !important;
+        --dsw-specific-sidebar-fill: #191e2a !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(255, 204, 102, 0.08) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(255, 204, 102, 0.16) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #ffcc66 !important;
+        --dsw-specific-input-major: #232834 !important;
+        --dsw-specific-bubble: #232834 !important;
+        --dsw-specific-menu: #232834 !important;
+        --dsw-hovercard-bg: #232834 !important;
+        --dsw-alias-tooltip-bg: #191e2a !important;
+        --dsw-alias-button-elevated-fill: #232834 !important;
+        --dsw-alias-button-floating-hover: #2b3240 !important;
+        --dsw-alias-brand-primary: #ffcc66 !important;
+        --dsw-alias-button-primary-fill: #ffcc66 !important;
+        --dsw-alias-button-primary-hover: #fac761 !important;
+        --dsw-alias-label-primary-foreground: #1f2430 !important;
+        --dsw-alias-label-primary: #cbccc6 !important;
+        --dsw-alias-label-secondary: #969aa4 !important;
+        --dsw-alias-label-tertiary: #707a8c !important;
+        --dsw-alias-label-dimmed: #5c6773 !important;
+        --dsw-alias-label-caption: #707a8c !important;
+        --dsw-alias-interactive-bg-hover: rgba(255, 204, 102, 0.1) !important;
+        --dsw-alias-interactive-bg-active: rgba(255, 204, 102, 0.18) !important;
+        --dsw-alias-border-l1: #373e4c !important;
+        --dsw-alias-border-l2: #2d3443 !important;
+        --dsw-alias-border-l3: #4f5869 !important;
+        --dsw-alias-border-l4: #636e84 !important;
+        --dsw-alias-markdown-code-block: #1a1f29 !important;
+        --dsw-alias-markdown-code-block-banner: #232834 !important;
+        --dsw-alias-scrollbar-bg-l2: #373e4c !important;
+        --dsw-alias-scrollbar-hover-l2: #ffcc66 !important;
+      }
+      body, body[data-ds-dark-theme] { background-color: #1f2430 !important; color: #cbccc6 !important; }
+      pre, code, [class*="codeBlock"] {
+        background-color: #1a1f29 !important;
+        color: #cbccc6 !important;
+        border-color: #2d3443 !important;
+      }
+      .hljs-keyword, .token.keyword { color: #f28779 !important; font-weight: 600; }
+      .hljs-string, .token.string { color: #bae67e !important; }
+      .hljs-function, .token.function { color: #73d0ff !important; }
+      .hljs-number, .token.number { color: #ff9940 !important; }
+      .hljs-comment, .token.comment { color: #5c6773 !important; font-style: italic; }
+    `
+  },
+  "light": {
+    name: "escook Light (经典紫韵浅色)",
+    desc: "暖白羊皮纸背景配罗兰紫强调色与高对比度文字",
+    type: "light",
+    colorPreview: "#705697",
+    bgPreview: "#FDF6E3",
+    css: `
+      :root, html, body, body[data-ds-dark-theme] {
+        --dsw-alias-bg-base: #FDF6E3 !important;
+        --dsw-alias-bg-layer-1: #F5EEDB !important;
+        --dsw-alias-bg-layer-2: #EDE5D0 !important;
+        --dsw-alias-bg-mask-1: rgba(88, 70, 50, 0.35) !important;
+        --dsw-specific-sidebar-fill: #F5EEDB !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(112, 86, 151, 0.08) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(112, 86, 151, 0.16) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #705697 !important;
+        --dsw-specific-input-major: #EDE5D0 !important;
+        --dsw-specific-bubble: #EDE5D0 !important;
+        --dsw-specific-menu: #FFFFFF !important;
+        --dsw-hovercard-bg: #FFFFFF !important;
+        --dsw-alias-tooltip-bg: #2B2B2B !important;
+        --dsw-alias-button-elevated-fill: #EDE5D0 !important;
+        --dsw-alias-button-floating-hover: #e4dcc4 !important;
+        --dsw-alias-brand-primary: #705697 !important;
+        --dsw-alias-button-primary-fill: #705697 !important;
+        --dsw-alias-button-primary-hover: #8a6ab8 !important;
+        --dsw-alias-label-primary-foreground: #ffffff !important;
+        --dsw-alias-label-primary: #2b2b2b !important;
+        --dsw-alias-label-secondary: #4a5c63 !important;
+        --dsw-alias-label-tertiary: #657b83 !important;
+        --dsw-alias-label-dimmed: #839496 !important;
+        --dsw-alias-label-caption: #657b83 !important;
+        --dsw-alias-interactive-bg-hover: rgba(112, 86, 151, 0.08) !important;
+        --dsw-alias-interactive-bg-active: rgba(112, 86, 151, 0.15) !important;
+        --dsw-alias-border-l1: #d3cbb7 !important;
+        --dsw-alias-border-l2: #e2dbca !important;
+        --dsw-alias-border-l3: #ccc4af !important;
+        --dsw-alias-border-l4: #b8af98 !important;
+        --dsw-alias-markdown-code-block: #f7f0dc !important;
+        --dsw-alias-markdown-code-block-banner: #ede5d0 !important;
+        --dsw-alias-scrollbar-bg-l2: #d3cbb7 !important;
+        --dsw-alias-scrollbar-hover-l2: #705697 !important;
+      }
+      body, body[data-ds-dark-theme] { background-color: #FDF6E3 !important; color: #2b2b2b !important; }
+      pre, code, [class*="codeBlock"] {
+        background-color: #f7f0dc !important;
+        color: #2b2b2b !important;
+        border-color: #d3cbb7 !important;
+      }
+    `
+  },
+  "light-soft": {
+    name: "escook Light Soft (柔和浅色)",
+    desc: "轻盈素雅纯净白调与柔和暖橙强调色",
+    type: "light",
+    colorPreview: "#ff9940",
+    bgPreview: "#FAFAFA",
+    css: `
+      :root, html, body, body[data-ds-dark-theme] {
+        --dsw-alias-bg-base: #FAFAFA !important;
+        --dsw-alias-bg-layer-1: #F0F0F0 !important;
+        --dsw-alias-bg-layer-2: #FFFFFF !important;
+        --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.3) !important;
+        --dsw-specific-sidebar-fill: #F0F0F0 !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(255, 153, 64, 0.08) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(255, 153, 64, 0.16) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #ff9940 !important;
+        --dsw-specific-input-major: #FFFFFF !important;
+        --dsw-specific-bubble: #FFFFFF !important;
+        --dsw-specific-menu: #FFFFFF !important;
+        --dsw-hovercard-bg: #FFFFFF !important;
+        --dsw-alias-tooltip-bg: #1F2937 !important;
+        --dsw-alias-button-elevated-fill: #FFFFFF !important;
+        --dsw-alias-button-floating-hover: #f5f5f5 !important;
+        --dsw-alias-brand-primary: #ff9940 !important;
+        --dsw-alias-button-primary-fill: #ff9940 !important;
+        --dsw-alias-button-primary-hover: #ffaa5e !important;
+        --dsw-alias-label-primary-foreground: #ffffff !important;
+        --dsw-alias-label-primary: #1F2937 !important;
+        --dsw-alias-label-secondary: #4B5563 !important;
+        --dsw-alias-label-tertiary: #6B7280 !important;
+        --dsw-alias-label-dimmed: #9CA3AF !important;
+        --dsw-alias-label-caption: #6B7280 !important;
+        --dsw-alias-interactive-bg-hover: rgba(255, 153, 64, 0.08) !important;
+        --dsw-alias-interactive-bg-active: rgba(255, 153, 64, 0.15) !important;
+        --dsw-alias-border-l1: #E5E7EB !important;
+        --dsw-alias-border-l2: #F3F4F6 !important;
+        --dsw-alias-border-l3: #D1D5DB !important;
+        --dsw-alias-border-l4: #9CA3AF !important;
+        --dsw-alias-markdown-code-block: #f4f4f5 !important;
+        --dsw-alias-markdown-code-block-banner: #e5e7eb !important;
+        --dsw-alias-scrollbar-bg-l2: #E5E7EB !important;
+        --dsw-alias-scrollbar-hover-l2: #ff9940 !important;
+      }
+      body, body[data-ds-dark-theme] { background-color: #FAFAFA !important; color: #1F2937 !important; }
+      pre, code, [class*="codeBlock"] {
+        background-color: #f4f4f5 !important;
+        color: #1F2937 !important;
+        border-color: #E5E7EB !important;
+      }
+    `
+  }
+};
+
+function applyAppTheme(themeKey) {
+  let styleEl = document.getElementById("dsh-builtin-theme-styles");
+  if (!themeKey || themeKey === "default") {
+    if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
+    document.documentElement.removeAttribute("data-dsh-theme");
+    localStorage.setItem("dsh_selected_theme", "default");
+    console.log("🎨 [dsh-desktop] 已恢复系统默认主题");
+    return;
+  }
+
+  const themeObj = ESCOOK_THEMES[themeKey];
+  if (!themeObj) return;
+
+  if (!styleEl) {
+    styleEl = document.createElement("style");
+    styleEl.id = "dsh-builtin-theme-styles";
+    document.head.appendChild(styleEl);
+  }
+  styleEl.textContent = themeObj.css;
+  document.documentElement.setAttribute("data-dsh-theme", `escook-${themeKey}`);
+  localStorage.setItem("dsh_selected_theme", themeKey);
+  console.log(`🌸 [dsh-desktop] 已激活主题: ${themeObj.name}`);
+}
+
+// ---------------------------------------------------------------------------
+// Native Desktop Modal: 🎨 主题与外观切换弹窗 (Theme Selection Modal)
+// ---------------------------------------------------------------------------
+function showThemeModal() {
+  const existingModal = document.getElementById("dsh-desktop-theme-modal-overlay");
+  if (existingModal && existingModal.parentNode) {
+    existingModal.parentNode.removeChild(existingModal);
+  }
+
+  const currentTheme = localStorage.getItem("dsh_selected_theme") || "default";
+  const isDark = document.documentElement.classList.contains("dark") || 
+                 document.body.classList.contains("dark") || 
+                 window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+  const overlay = document.createElement("div");
+  overlay.id = "dsh-desktop-theme-modal-overlay";
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: dshFadeIn 0.15s ease-out;
+  `;
+
+  const cardBg = isDark ? "#1e293b" : "#ffffff";
+  const textColor = isDark ? "#f8fafc" : "#0f172a";
+  const borderColor = isDark ? "#334155" : "#e2e8f0";
+  const itemBg = isDark ? "#0f172a" : "#f8fafc";
+
+  overlay.innerHTML = `
+    <div style="
+      width: 540px;
+      max-width: 90vw;
+      max-height: 85vh;
+      background: ${cardBg};
+      color: ${textColor};
+      border: 1px solid ${borderColor};
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      box-sizing: border-box;
+      animation: dshScaleUp 0.15s ease-out;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    ">
+      <!-- 头部 -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid ${borderColor};">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 42px; height: 42px; border-radius: 10px; background: #0f172a; display: flex; align-items: center; justify-content: center; font-size: 20px;">
+            🎨
+          </div>
+          <div>
+            <h3 style="margin: 0; font-size: 17px; font-weight: 700;">主题外观设置</h3>
+            <p style="margin: 3px 0 0 0; font-size: 12px; opacity: 0.7;">选择您喜爱的界面配色方案（即时生效并持久保存）</p>
+          </div>
+        </div>
+        <button id="dsh-theme-modal-close-btn" style="background: none; border: none; font-size: 18px; cursor: pointer; color: inherit; opacity: 0.6; padding: 4px 8px; border-radius: 6px;" title="关闭">✕</button>
+      </div>
+
+      <!-- 主题列表 -->
+      <div style="display: grid; gap: 10px; margin-bottom: 20px;">
+        <!-- 系统默认主题 -->
+        <div class="dsh-theme-option-card" data-theme-key="default" style="
+          padding: 14px 16px;
+          background: ${currentTheme === 'default' ? 'rgba(37,99,235,0.1)' : itemBg};
+          border: 2px solid ${currentTheme === 'default' ? '#2563eb' : borderColor};
+          border-radius: 12px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          transition: all 0.2s;
+        ">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 24px; height: 24px; border-radius: 6px; background: #3b82f6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px;">⚙️</div>
+            <div>
+              <div style="font-weight: 600; font-size: 13px;">系统默认主题 (Default)</div>
+              <div style="font-size: 11px; opacity: 0.65; margin-top: 2px;">跟随 DeepSeek Harness 官方标准暗黑/明亮模式</div>
+            </div>
+          </div>
+          <span style="font-size: 14px; font-weight: 700; color: #2563eb;">${currentTheme === 'default' ? '✓' : ''}</span>
+        </div>
+
+        <!-- 4 款彬哥主题 -->
+        ${Object.entries(ESCOOK_THEMES).map(([key, t]) => {
+          const isSelected = currentTheme === key;
+          return `
+            <div class="dsh-theme-option-card" data-theme-key="${key}" style="
+              padding: 14px 16px;
+              background: ${isSelected ? 'rgba(255,204,102,0.12)' : itemBg};
+              border: 2px solid ${isSelected ? t.colorPreview : borderColor};
+              border-radius: 12px;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              transition: all 0.2s;
+            ">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 24px; height: 24px; border-radius: 6px; background: ${t.bgPreview}; border: 2px solid ${t.colorPreview}; display: flex; align-items: center; justify-content: center; font-size: 11px;">🌸</div>
+                <div>
+                  <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                    <span>${t.name}</span>
+                    <span style="font-size: 9px; padding: 1px 5px; border-radius: 4px; background: ${t.colorPreview}; color: ${t.type === 'dark' && key !== 'dark' ? '#1f2430' : '#fff'}; font-weight: 700;">${t.type.toUpperCase()}</span>
+                  </div>
+                  <div style="font-size: 11px; opacity: 0.65; margin-top: 2px;">${t.desc}</div>
+                </div>
+              </div>
+              <span style="font-size: 14px; font-weight: 700; color: ${t.colorPreview};">${isSelected ? '✓' : ''}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <!-- 底部跳转插件市场按钮 -->
+      <div style="padding-top: 14px; border-top: 1px solid ${borderColor}; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+        <div style="font-size: 11px; opacity: 0.55;">🌸 致敬 liulongbin1314 / escook-theme</div>
+        <button id="dsh-open-market-themes-btn" style="
+          padding: 6px 12px;
+          background: none;
+          border: 1px solid ${borderColor};
+          border-radius: 6px;
+          color: inherit;
+          font-size: 12px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          opacity: 0.85;
+          transition: all 0.2s;
+        ">
+          <span>🛒 探索插件市场更多主题...</span>
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const closeModal = () => { overlay.style.display = "none"; };
+  overlay.querySelector("#dsh-theme-modal-close-btn").addEventListener("click", closeModal);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+
+  // 绑定选项点击
+  overlay.querySelectorAll(".dsh-theme-option-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const key = card.dataset.themeKey;
+      applyAppTheme(key);
+      // 重新触发 showThemeModal 重新渲染选中状态
+      showThemeModal();
+    });
+  });
+
+  // 绑定跳转插件市场主题
+  const openMarketBtn = overlay.querySelector("#dsh-open-market-themes-btn");
+  if (openMarketBtn) {
+    openMarketBtn.addEventListener("click", () => {
+      closeModal();
+      const allButtons = Array.from(document.querySelectorAll("button, [role='tab'], div[role='button']"));
+      const marketTab = allButtons.find((btn) => {
+        const text = (btn.textContent || "").trim();
+        return text.includes("插件市场") || text === "插件市场";
+      });
+      if (marketTab) marketTab.click();
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Native Desktop Hook: ℹ️ 关于 DSH Desktop 弹窗 (About Modal) - 纯净版
+// ---------------------------------------------------------------------------
+let cachedAppInfo = { version: "1.1.5", kernelVersion: "0.1.1-rc.2" };
 ipcRenderer.invoke("get-app-info").then((info) => {
   if (info) cachedAppInfo = info;
 }).catch(() => {});
@@ -247,8 +711,8 @@ function showAboutModal() {
       <!-- 核心操作区：检查更新 -->
       <div style="background: ${itemBg}; border: 1px solid ${borderColor}; border-radius: 12px; padding: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
         <div>
-          <div style="font-weight: 600; font-size: 13px;">软件更新状态</div>
-          <div style="font-size: 12px; opacity: 0.7;">支持在应用内一键下载更新包并覆盖安装</div>
+          <div style="font-weight: 600; font-size: 13px;">软件版本与更新</div>
+          <div style="font-size: 12px; opacity: 0.7; margin-top: 2px;">支持在应用内一键下载更新包并覆盖安装</div>
         </div>
         <button id="dsh-modal-check-update-btn" style="
           padding: 8px 16px;
@@ -290,7 +754,7 @@ function showAboutModal() {
 
       <!-- 底部内核版本 -->
       <div style="padding-top: 14px; border-top: 1px solid ${borderColor}; font-size: 11px; opacity: 0.65; display: flex; justify-content: space-between; gap: 8px;">
-        <div>官方内核：<strong>@deepseek-ai/dsh@${cachedAppInfo.kernelVersion || '0.1.0-rc.8'}</strong></div>
+        <div>官方内核：<strong>@deepseek-ai/dsh@${cachedAppInfo.kernelVersion || '0.1.1-rc.2'}</strong></div>
         <div>桌面框架：Electron ${cachedAppInfo.electronVersion || '33'}</div>
       </div>
     </div>
@@ -298,17 +762,10 @@ function showAboutModal() {
 
   document.body.appendChild(overlay);
 
-  // 关闭事件
-  const closeModal = () => {
-    overlay.style.display = "none";
-  };
-
+  const closeModal = () => { overlay.style.display = "none"; };
   overlay.querySelector("#dsh-modal-close-btn").addEventListener("click", closeModal);
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) closeModal();
-  });
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
 
-  // 检查更新事件
   const checkBtn = overlay.querySelector("#dsh-modal-check-update-btn");
   checkBtn.addEventListener("click", async () => {
     checkBtn.innerText = "🔄 正在检查更新...";
@@ -328,63 +785,95 @@ function showAboutModal() {
   });
 }
 
-function injectAboutTabIntoSettings() {
+// ---------------------------------------------------------------------------
+// Native Desktop Hook: 在设置弹窗中分别注入【主题外观】与【关于】Tab
+// ---------------------------------------------------------------------------
+function injectCustomTabsIntoSettings() {
   const allButtons = Array.from(document.querySelectorAll("button, [role='tab'], div[role='button']"));
   const marketTab = allButtons.find((btn) => {
     const text = (btn.textContent || "").trim();
     return text.includes("插件市场") || text === "插件市场";
   });
 
-  if (!marketTab) return;
-  const tabContainer = marketTab.parentElement;
-  if (!tabContainer) return;
+  if (!marketTab || !marketTab.parentNode) return;
+  const tabContainer = marketTab.parentNode;
 
-  // 如果已经注入过，则跳过
-  if (tabContainer.querySelector(".dsh-about-custom-tab")) return;
+  // 1. 注入【主题外观】Tab
+  if (!tabContainer.querySelector(".dsh-theme-custom-tab")) {
+    const themeTab = marketTab.cloneNode(true);
+    themeTab.className = marketTab.className + " dsh-theme-custom-tab";
+    themeTab.innerHTML = `
+      <span style="display: inline-flex; align-items: center; gap: 8px; width: 100%;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12a10 10 0 0 1 10-10z"></path>
+          <path d="m4.93 4.93 4.24 4.24"></path>
+          <path d="m14.83 9.17 4.24-4.24"></path>
+          <path d="m14.83 14.83 4.24 4.24"></path>
+          <path d="m4.93 19.07 4.24-4.24"></path>
+        </svg>
+        <span>主题外观</span>
+      </span>
+    `;
+    themeTab.setAttribute("aria-selected", "false");
+    themeTab.style.cursor = "pointer";
+    themeTab.dataset.dshCustomTab = "theme";
+    marketTab.after(themeTab);
 
-  // 克隆一个同款样式的 Tab 按钮
-  const aboutTab = marketTab.cloneNode(true);
-  aboutTab.className = marketTab.className + " dsh-about-custom-tab";
-  aboutTab.innerHTML = `
-    <span style="display: inline-flex; align-items: center; gap: 8px; width: 100%;">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"></circle>
-        <line x1="12" y1="16" x2="12" y2="12"></line>
-        <line x1="12" y1="8" x2="12.01" y2="8"></line>
-      </svg>
-      <span>关于</span>
-    </span>
-  `;
+    themeTab.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showThemeModal();
+    });
+  }
 
-  aboutTab.setAttribute("aria-selected", "false");
-  aboutTab.style.cursor = "pointer";
-  aboutTab.dataset.dshCustomTab = "about";
+  // 2. 注入【关于】Tab
+  if (!tabContainer.querySelector(".dsh-about-custom-tab")) {
+    const themeTab = tabContainer.querySelector(".dsh-theme-custom-tab") || marketTab;
+    const aboutTab = marketTab.cloneNode(true);
+    aboutTab.className = marketTab.className + " dsh-about-custom-tab";
+    aboutTab.innerHTML = `
+      <span style="display: inline-flex; align-items: center; gap: 8px; width: 100%;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <span>关于</span>
+      </span>
+    `;
+    aboutTab.setAttribute("aria-selected", "false");
+    aboutTab.style.cursor = "pointer";
+    aboutTab.dataset.dshCustomTab = "about";
+    themeTab.after(aboutTab);
 
-  // 插入到 Tab 容器中（排在插件市场之后）
-  marketTab.after(aboutTab);
-
-  // 点击“关于”Tab 时打开独立 Modal 弹窗
-  aboutTab.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    showAboutModal();
-  });
+    aboutTab.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showAboutModal();
+    });
+  }
 }
 
 // 页面加载及 DOM 变动时持续监听
 window.addEventListener("DOMContentLoaded", () => {
+  const savedTheme = localStorage.getItem("dsh_selected_theme");
+  if (savedTheme && savedTheme !== "default") {
+    applyAppTheme(savedTheme);
+  }
+  enableSmoothWheelScrollFix();
   scanAndEnableRestartButtons();
-  injectAboutTabIntoSettings();
+  injectCustomTabsIntoSettings();
   const observer = new MutationObserver(() => {
     scanAndEnableRestartButtons();
-    injectAboutTabIntoSettings();
+    injectCustomTabsIntoSettings();
   });
   observer.observe(document.body, { childList: true, subtree: true });
 });
 
 setInterval(() => {
   scanAndEnableRestartButtons();
-  injectAboutTabIntoSettings();
+  injectCustomTabsIntoSettings();
 }, 1000);
 
 
