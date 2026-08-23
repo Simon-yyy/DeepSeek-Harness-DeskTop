@@ -494,6 +494,15 @@ ipcMain.handle("restart-backend-service", async () => {
     spawnBackend();
     const ready = await waitForWeb(30_000);
     if (ready && mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        await mainWindow.webContents.executeJavaScript(`
+          try {
+            sessionStorage.removeItem("dshm-restart");
+            sessionStorage.removeItem("dshm-pending");
+            sessionStorage.removeItem("dshm-restart-dismissed");
+          } catch (e) {}
+        `);
+      } catch (e) {}
       mainWindow.reload();
       return { success: true };
     }

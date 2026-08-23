@@ -172,6 +172,13 @@ function scanAndEnableRestartButtons() {
         e.stopPropagation();
         e.stopImmediatePropagation();
 
+        // 立即清理前端 sessionStorage 脏标记，防止重启刷新后读取旧缓存
+        try {
+          sessionStorage.removeItem("dshm-restart");
+          sessionStorage.removeItem("dshm-pending");
+          sessionStorage.removeItem("dshm-restart-dismissed");
+        } catch (err) {}
+
         const originalText = el.innerText;
         el.innerText = "⚡ 正在重启 DSH 服务...";
         el.disabled = true;
