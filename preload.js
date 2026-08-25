@@ -715,29 +715,81 @@ function showAboutModal() {
         <button id="dsh-modal-close-btn" style="background: none; border: none; font-size: 18px; cursor: pointer; color: inherit; opacity: 0.6; padding: 4px 8px; border-radius: 6px; transition: all 0.2s;" title="关闭">✕</button>
       </div>
 
-      <!-- 核心操作区：检查更新 -->
-      <div style="background: ${itemBg}; border: 1px solid ${borderColor}; border-radius: 12px; padding: 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
-        <div>
-          <div style="font-weight: 600; font-size: 13px;">软件版本与更新</div>
-          <div style="font-size: 12px; opacity: 0.7; margin-top: 2px;">支持在应用内一键下载更新包并覆盖安装</div>
+      <!-- 核心操作区：客户端与官方内核双更新卡片 -->
+      <div style="display: grid; gap: 12px; margin-bottom: 20px;">
+        <!-- 客户端外壳更新卡片 -->
+        <div style="background: ${itemBg}; border: 1px solid ${borderColor}; border-radius: 12px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <div>
+            <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+              <span>🖥️ 桌面客户端</span>
+              <span style="font-size: 11px; padding: 1px 6px; border-radius: 4px; background: rgba(37,99,235,0.1); color: #2563eb; font-weight: 600;">v${cachedAppInfo.version}</span>
+            </div>
+            <div style="font-size: 12px; opacity: 0.7; margin-top: 2px;">支持在应用内一键下载更新包并覆盖安装</div>
+          </div>
+          <button id="dsh-modal-check-app-update-btn" style="
+            padding: 7px 14px;
+            background: #2563eb;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 6px rgba(37,99,235,0.2);
+            transition: opacity 0.2s;
+          ">
+            <span>🔍 检查外壳更新</span>
+          </button>
         </div>
-        <button id="dsh-modal-check-update-btn" style="
-          padding: 8px 16px;
-          background: #2563eb;
-          color: #ffffff;
-          border: none;
-          border-radius: 8px;
-          font-size: 13px;
-          font-weight: 600;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          box-shadow: 0 2px 6px rgba(37,99,235,0.25);
-          transition: opacity 0.2s;
-        ">
-          <span>🔍 检查更新...</span>
-        </button>
+
+        <!-- 官方内核更新卡片 -->
+        <div style="background: ${itemBg}; border: 1px solid ${borderColor}; border-radius: 12px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <div>
+            <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+              <span>⚡ DeepSeek 官方内核</span>
+              <span style="font-size: 11px; padding: 1px 6px; border-radius: 4px; background: rgba(16,185,129,0.1); color: #10b981; font-weight: 600;">v${cachedAppInfo.kernelVersion || '0.1.1-rc.2'}</span>
+            </div>
+            <div style="font-size: 12px; opacity: 0.7; margin-top: 2px;">支持后台全自动升级并无感热重启服务</div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="dsh-modal-check-kernel-update-btn" style="
+              padding: 7px 12px;
+              background: transparent;
+              color: inherit;
+              border: 1px solid ${borderColor};
+              border-radius: 8px;
+              font-size: 12px;
+              font-weight: 600;
+              cursor: pointer;
+              display: inline-flex;
+              align-items: center;
+              gap: 4px;
+              transition: all 0.2s;
+            ">
+              <span>⚡ 检查内核</span>
+            </button>
+            <button id="dsh-modal-upgrade-kernel-btn" style="
+              padding: 7px 12px;
+              background: #10b981;
+              color: #ffffff;
+              border: none;
+              border-radius: 8px;
+              font-size: 12px;
+              font-weight: 600;
+              cursor: pointer;
+              display: inline-flex;
+              align-items: center;
+              gap: 4px;
+              box-shadow: 0 2px 6px rgba(16,185,129,0.2);
+              transition: opacity 0.2s;
+            ">
+              <span>🚀 一键升级</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- 核心特性与亮点 -->
@@ -745,7 +797,7 @@ function showAboutModal() {
         <div style="font-size: 13px; font-weight: 600; margin-bottom: 10px;">🌟 核心特性</div>
         <div style="display: grid; gap: 8px; font-size: 12px; line-height: 1.5;">
           <div style="padding: 8px 12px; background: ${itemBg}; border-radius: 8px; border-left: 3px solid #2563eb;">
-            <strong>🚀 应用内一键升级</strong>：发现新版自动在应用内下载并自动重启升级。
+            <strong>🚀 客户端与内核双无感升级</strong>：外壳与官方内核均支持一键热升级。
           </div>
           <div style="padding: 8px 12px; background: ${itemBg}; border-radius: 8px; border-left: 3px solid #10b981;">
             <strong>⚡ 插件市场【立即重启】解锁</strong>：安装插件后点击立即重启后端服务生效。
@@ -761,8 +813,8 @@ function showAboutModal() {
 
       <!-- 底部内核版本 -->
       <div style="padding-top: 14px; border-top: 1px solid ${borderColor}; font-size: 11px; opacity: 0.65; display: flex; justify-content: space-between; gap: 8px;">
-        <div>官方内核：<strong>@deepseek-ai/dsh@${cachedAppInfo.kernelVersion || '0.1.1-rc.2'}</strong></div>
-        <div>桌面框架：Electron ${cachedAppInfo.electronVersion || '33'}</div>
+        <div>官方内核包：<strong>@deepseek-ai/dsh@${cachedAppInfo.kernelVersion || '0.1.1-rc.2'}</strong></div>
+        <div>桌面环境：Node ${cachedAppInfo.nodeVersion || '20'} · Electron ${cachedAppInfo.electronVersion || '33'}</div>
       </div>
     </div>
   `;
@@ -773,23 +825,68 @@ function showAboutModal() {
   overlay.querySelector("#dsh-modal-close-btn").addEventListener("click", closeModal);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
 
-  const checkBtn = overlay.querySelector("#dsh-modal-check-update-btn");
-  checkBtn.addEventListener("click", async () => {
-    checkBtn.innerText = "🔄 正在检查更新...";
-    checkBtn.style.opacity = "0.75";
-    checkBtn.disabled = true;
-    try {
-      await ipcRenderer.invoke("check-for-updates-manual");
-    } catch (err) {
-      alert("检查更新出错: " + err.message);
-    } finally {
-      setTimeout(() => {
-        checkBtn.innerText = "🔍 检查更新...";
-        checkBtn.style.opacity = "1";
-        checkBtn.disabled = false;
-      }, 2000);
-    }
-  });
+  // 客户端检查更新
+  const checkAppBtn = overlay.querySelector("#dsh-modal-check-app-update-btn");
+  if (checkAppBtn) {
+    checkAppBtn.addEventListener("click", async () => {
+      checkAppBtn.innerText = "🔄 检查中...";
+      checkAppBtn.style.opacity = "0.75";
+      checkAppBtn.disabled = true;
+      try {
+        await ipcRenderer.invoke("check-for-updates-manual");
+      } catch (err) {
+        alert("检查外壳更新出错: " + err.message);
+      } finally {
+        setTimeout(() => {
+          checkAppBtn.innerText = "🔍 检查外壳更新";
+          checkAppBtn.style.opacity = "1";
+          checkAppBtn.disabled = false;
+        }, 2000);
+      }
+    });
+  }
+
+  // 内核检查更新
+  const checkKernelBtn = overlay.querySelector("#dsh-modal-check-kernel-update-btn");
+  if (checkKernelBtn) {
+    checkKernelBtn.addEventListener("click", async () => {
+      checkKernelBtn.innerText = "🔄 检查中...";
+      checkKernelBtn.style.opacity = "0.75";
+      checkKernelBtn.disabled = true;
+      try {
+        await ipcRenderer.invoke("check-for-kernel-updates-manual");
+      } catch (err) {
+        alert("检查内核更新出错: " + err.message);
+      } finally {
+        setTimeout(() => {
+          checkKernelBtn.innerText = "⚡ 检查内核";
+          checkKernelBtn.style.opacity = "1";
+          checkKernelBtn.disabled = false;
+        }, 2000);
+      }
+    });
+  }
+
+  // 内核一键升级
+  const upgradeKernelBtn = overlay.querySelector("#dsh-modal-upgrade-kernel-btn");
+  if (upgradeKernelBtn) {
+    upgradeKernelBtn.addEventListener("click", async () => {
+      upgradeKernelBtn.innerText = "⏳ 正在发起...";
+      upgradeKernelBtn.style.opacity = "0.75";
+      upgradeKernelBtn.disabled = true;
+      try {
+        await ipcRenderer.invoke("upgrade-kernel-manual");
+      } catch (err) {
+        alert("发起内核升级出错: " + err.message);
+      } finally {
+        setTimeout(() => {
+          upgradeKernelBtn.innerText = "🚀 一键升级";
+          upgradeKernelBtn.style.opacity = "1";
+          upgradeKernelBtn.disabled = false;
+        }, 2000);
+      }
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -238,15 +238,222 @@ function checkForUpdates(silent = true) {
 }
 
 function compareVersions(v1, v2) {
-  const p1 = v1.split(".").map(Number);
-  const p2 = v2.split(".").map(Number);
+  const clean1 = (v1 || "").replace(/^v/, "").trim();
+  const clean2 = (v2 || "").replace(/^v/, "").trim();
+  if (clean1 === clean2) return 0;
+
+  const [main1, pre1] = clean1.split("-");
+  const [main2, pre2] = clean2.split("-");
+
+  const p1 = (main1 || "").split(".").map((n) => parseInt(n, 10) || 0);
+  const p2 = (main2 || "").split(".").map((n) => parseInt(n, 10) || 0);
+
   for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
     const num1 = p1[i] || 0;
     const num2 = p2[i] || 0;
     if (num1 > num2) return 1;
     if (num1 < num2) return -1;
   }
+
+  // 没有 pre 标识的为正式版，正式版高于预发布版 (如 0.1.1 > 0.1.1-rc.2)
+  if (!pre1 && pre2) return 1;
+  if (pre1 && !pre2) return -1;
+  if (pre1 && pre2) {
+    return pre1.localeCompare(pre2, undefined, { numeric: true, sensitivity: "base" });
+  }
   return 0;
+}
+
+// ---------------------------------------------------------------------------
+// DSH Official Kernel Version Check & In-App Upgrade
+// ---------------------------------------------------------------------------
+let isUpdatingKernel = false;
+
+function getLocalKernelVersion() {
+  try {
+    const dshBin = resolveDshBin();
+    if (dshBin && fs.existsSync(dshBin)) {
+      let dir = path.dirname(dshBin);
+      for (let i = 0; i < 4; i++) {
+        const pkgPath = path.join(dir, "package.json");
+        if (fs.existsSync(pkgPath)) {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+          if (pkg.name === "@deepseek-ai/dsh" && pkg.version) {
+            return pkg.version;
+          }
+        }
+        dir = path.dirname(dir);
+      }
+    }
+  } catch (err) {
+    console.warn("[dsh-desktop] Failed to read local kernel version:", err.message);
+  }
+  return "0.1.0-rc.8";
+}
+
+function fetchLatestKernelVersion() {
+  return new Promise((resolve, reject) => {
+    const fetchFromUrl = (targetUrl) => {
+      return new Promise((res, rej) => {
+        const parsed = new URL(targetUrl);
+        const req = https.get(
+          {
+            hostname: parsed.hostname,
+            path: parsed.pathname,
+            headers: { "User-Agent": "DSH-Desktop-App" },
+            timeout: 6000,
+          },
+          (response) => {
+            if (response.statusCode !== 200) {
+              return rej(new Error(`HTTP ${response.statusCode}`));
+            }
+            let data = "";
+            response.on("data", (chunk) => { data += chunk; });
+            response.on("end", () => {
+              try {
+                const json = JSON.parse(data);
+                if (json && json.version) {
+                  res(json.version);
+                } else {
+                  rej(new Error("Invalid package metadata"));
+                }
+              } catch (e) {
+                rej(e);
+              }
+            });
+          }
+        );
+        req.on("error", rej);
+        req.on("timeout", () => { req.destroy(); rej(new Error("请求超时")); });
+      });
+    };
+
+    // 优先使用国内 npmmirror 镜像源（延迟极低），失败时自动回退至 npm 官方源
+    fetchFromUrl("https://registry.npmmirror.com/@deepseek-ai/dsh/latest")
+      .then(resolve)
+      .catch(() => {
+        fetchFromUrl("https://registry.npmjs.org/@deepseek-ai/dsh/latest")
+          .then(resolve)
+          .catch(reject);
+      });
+  });
+}
+
+function checkForKernelUpdates(silent = true) {
+  if (isDownloadingUpdate || isUpdatingKernel) {
+    if (!silent) {
+      dialog.showMessageBox(mainWindow || null, {
+        type: "info",
+        title: "提示",
+        message: "当前正在进行其他更新任务，请稍候再试。",
+      });
+    }
+    return;
+  }
+
+  fetchLatestKernelVersion()
+    .then((latestVersion) => {
+      const localVersion = getLocalKernelVersion();
+      console.log(`[dsh-desktop] Kernel check: local=v${localVersion}, latest=v${latestVersion}`);
+
+      if (latestVersion && compareVersions(latestVersion, localVersion) > 0) {
+        dialog.showMessageBox(mainWindow || null, {
+          type: "info",
+          title: `⚡ 发现 DeepSeek 官方新内核 (v${latestVersion})`,
+          message: `检测到 DeepSeek 官方已发布全新内核版本 v${latestVersion}（当前本地版本为 v${localVersion}）！\n\n是否立即一键自动升级内核并热重启服务？`,
+          buttons: ["🚀 立即一键升级内核", "稍后再说"],
+          defaultId: 0,
+          cancelId: 1,
+        }).then(({ response }) => {
+          if (response === 0) {
+            upgradeKernel(latestVersion);
+          }
+        });
+      } else if (!silent) {
+        dialog.showMessageBox(mainWindow || null, {
+          type: "info",
+          title: "检查官方内核更新",
+          message: `当前已是最新内核版本 (v${localVersion})！无需更新。`,
+        });
+      }
+    })
+    .catch((err) => {
+      if (!silent) {
+        dialog.showMessageBox(mainWindow || null, {
+          type: "warning",
+          title: "检查官方内核更新",
+          message: `获取官方内核版本失败: ${err.message}\n请检查网络连接后重试。`,
+        });
+      }
+    });
+}
+
+function upgradeKernel(targetVersion = "latest") {
+  if (isUpdatingKernel) {
+    dialog.showMessageBox(mainWindow || null, {
+      type: "info",
+      title: "正在升级",
+      message: "官方内核正在后台升级中，请稍候...",
+    });
+    return;
+  }
+
+  isUpdatingKernel = true;
+  const npmBin = resolveNpm();
+  ensureNodeInPath();
+
+  dialog.showMessageBox(mainWindow || null, {
+    type: "info",
+    title: "⚡ 开始升级内核",
+    message: `已开始在后台下载并安装官方最新内核 (@deepseek-ai/dsh@${targetVersion})。\n安装完成后将自动热重启后端服务并刷新界面，请稍候！`,
+    buttons: ["好的"],
+  });
+
+  const installProcess = spawn(npmBin, ["install", "-g", `@deepseek-ai/dsh@${targetVersion}`], {
+    shell: true,
+    windowsHide: true,
+    env: process.env,
+  });
+
+  let errorLogs = "";
+  if (installProcess.stderr) {
+    installProcess.stderr.on("data", (data) => {
+      errorLogs += data.toString();
+    });
+  }
+
+  installProcess.on("close", async (code) => {
+    isUpdatingKernel = false;
+    if (code === 0) {
+      const newLocalVersion = getLocalKernelVersion();
+      console.log(`[dsh-desktop] Kernel upgraded successfully to v${newLocalVersion}`);
+
+      // 优雅热重启后台服务
+      await restartBackendService();
+
+      dialog.showMessageBox(mainWindow || null, {
+        type: "info",
+        title: "🎉 内核升级成功",
+        message: `DeepSeek 官方内核已成功升级至 v${newLocalVersion}！\n后端服务已自动热重启完成。`,
+      });
+    } else {
+      console.error("[dsh-desktop] Kernel upgrade failed with code:", code, errorLogs);
+      dialog.showMessageBox(mainWindow || null, {
+        type: "error",
+        title: "内核升级失败",
+        message: `升级内核过程遇到错误 (Exit Code: ${code})。\n您可以尝试在终端手动执行: npm i -g @deepseek-ai/dsh@latest\n\n错误日志:\n${errorLogs.slice(0, 300)}`,
+      });
+    }
+  });
+
+  installProcess.on("error", (err) => {
+    isUpdatingKernel = false;
+    dialog.showMessageBox(mainWindow || null, {
+      type: "error",
+      title: "启动升级失败",
+      message: `无法调用 npm 工具链: ${err.message}\n请确认系统中已正确安装 Node.js 与 npm。`,
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -288,6 +495,23 @@ function resolveNode() {
     if (hit) return hit;
   }
   return process.execPath;
+}
+
+function resolveNpm() {
+  const nodeBin = resolveNode();
+  if (nodeBin && fs.existsSync(nodeBin)) {
+    const nodeDir = path.dirname(nodeBin);
+    const npmCmd = path.join(nodeDir, "npm.cmd");
+    if (fs.existsSync(npmCmd)) return npmCmd;
+    const npmExe = path.join(nodeDir, "npm.exe");
+    if (fs.existsSync(npmExe)) return npmExe;
+  }
+  const which = spawnSync("where", ["npm"], { encoding: "utf8", shell: true, windowsHide: true });
+  if (which.status === 0 && which.stdout.trim()) {
+    const hit = which.stdout.trim().split(/\r?\n/).find((line) => /npm\.cmd$/i.test(line) || /npm$/i.test(line));
+    if (hit) return hit;
+  }
+  return "npm";
 }
 
 function resolveDshBin() {
@@ -480,11 +704,8 @@ function stopBackendIfOurs() {
   backendSpawnedByUs = false;
 }
 
-// ---------------------------------------------------------------------------
-// Native Desktop IPC: Restart Backend Service & Reload Web Page
-// ---------------------------------------------------------------------------
-ipcMain.handle("restart-backend-service", async () => {
-  console.log("[dsh-desktop] Triggering native restart of DSH Backend...");
+async function restartBackendService() {
+  console.log("[dsh-desktop] Restarting backend service...");
   try {
     stopBackendIfOurs();
     let retries = 25;
@@ -511,16 +732,21 @@ ipcMain.handle("restart-backend-service", async () => {
     console.error("[dsh-desktop] Failed to restart backend service:", err);
     return { success: false, error: err.message };
   }
-});
+}
 
 // ---------------------------------------------------------------------------
-// Native Desktop IPC: Get App Info & Manual Update Check
+// Native Desktop IPC: Restart Backend Service & App Info & Updates
 // ---------------------------------------------------------------------------
+ipcMain.handle("restart-backend-service", async () => {
+  console.log("[dsh-desktop] Triggering native restart of DSH Backend...");
+  return await restartBackendService();
+});
+
 ipcMain.handle("get-app-info", () => {
   return {
     version: app.getVersion(),
     name: "DSH Desktop",
-    kernelVersion: "0.1.0-rc.8",
+    kernelVersion: getLocalKernelVersion(),
     electronVersion: process.versions.electron,
     nodeVersion: process.versions.node,
     platform: process.platform,
@@ -530,6 +756,16 @@ ipcMain.handle("get-app-info", () => {
 
 ipcMain.handle("check-for-updates-manual", () => {
   checkForUpdates(false);
+  return { success: true };
+});
+
+ipcMain.handle("check-for-kernel-updates-manual", () => {
+  checkForKernelUpdates(false);
+  return { success: true };
+});
+
+ipcMain.handle("upgrade-kernel-manual", () => {
+  upgradeKernel("latest");
   return { success: true };
 });
 
@@ -634,9 +870,15 @@ function createTray(appIcon) {
         },
       },
       {
-        label: "🔍 检查更新...",
+        label: "🔍 检查客户端更新...",
         click: () => {
           checkForUpdates(false);
+        },
+      },
+      {
+        label: "⚡ 检查官方内核更新...",
+        click: () => {
+          checkForKernelUpdates(false);
         },
       },
       { type: "separator" },
@@ -727,10 +969,16 @@ function createWindow() {
 
   mainWindow.loadURL(WEB_URL);
 
-  // Auto check for updates on startup (silently in background after 5s)
+  // 错峰静默检查更新：启动 5 秒检查客户端外壳，10 秒检查官方内核
   setTimeout(() => {
     checkForUpdates(true);
   }, 5000);
+
+  setTimeout(() => {
+    if (!isDownloadingUpdate) {
+      checkForKernelUpdates(true);
+    }
+  }, 10000);
 
   // Test hook: DSH_DESKTOP_TEST=1
   if (process.env.DSH_DESKTOP_TEST === "1") {
