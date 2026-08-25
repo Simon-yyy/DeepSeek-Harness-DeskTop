@@ -154,7 +154,33 @@ ${notesBody}
   if (!changelogContent.includes(`## [v${newVersion}]`)) {
     changelogContent = changelogContent.replace('# DSH Desktop 版本更新日志\n\n', `# DSH Desktop 版本更新日志\n\n${newEntry}`);
     fs.writeFileSync(changelogPath, changelogContent, 'utf8');
-    console.log(`✓ Updated global CHANGELOG.md`);
+    console.log(`✓ Updated: CHANGELOG.md`);
+  }
+  // 7. Clean up older release archives, keep only the latest 2 versions
+  const MAX_RETAIN_VERSIONS = 2;
+  const versionDirs = fs.readdirSync(releaseDir, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory() && /^v\d+\.\d+\.\d+$/.test(dirent.name))
+    .map(dirent => dirent.name)
+    .sort((a, b) => {
+      const semverA = a.replace(/^v/, '').split('.').map(Number);
+      const semverB = b.replace(/^v/, '').split('.').map(Number);
+      for (let i = 0; i < 3; i++) {
+        if (semverA[i] !== semverB[i]) return semverB[i] - semverA[i]; // descending
+      }
+      return 0;
+    });
+
+  if (versionDirs.length > MAX_RETAIN_VERSIONS) {
+    const toRemove = versionDirs.slice(MAX_RETAIN_VERSIONS);
+    for (const oldDirName of toRemove) {
+      const oldDirPath = path.join(releaseDir, oldDirName);
+      try {
+        fs.rmSync(oldDirPath, { recursive: true, force: true });
+        console.log(`🧹 Cleaned up old release archive: release/${oldDirName} (only keeping latest ${MAX_RETAIN_VERSIONS})`);
+      } catch (err) {
+        console.warn(`Failed to remove old archive release/${oldDirName}:`, err.message);
+      }
+    }
   }
 
   console.log(`\n🎉 [Release Done] Release v${newVersion} packaged and archived successfully!`);

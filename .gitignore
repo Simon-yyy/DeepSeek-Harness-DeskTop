@@ -19,3 +19,9 @@ preview-black-whale.png
 dsh-desktop-test*.txt
 .DS_Store
 Thumbs.db
+
+# Temporary & User test artifacts
+books/
+*.tgz
+ocr_text.md
+
