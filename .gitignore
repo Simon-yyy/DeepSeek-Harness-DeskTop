@@ -1,18 +1,13 @@
 # Dependencies
 node_modules/
-package-lock.json.bak
 
 # Build & Packaging outputs
 release/
 dist/
-build/icon.ico
-build/icon.png
-preview-black-whale.png
 
 # Build cache
 .npm-cache/
 .builder-cache/
-.agents/
 
 # Logs & Temporary files
 *.log
@@ -21,7 +16,5 @@ dsh-desktop-test*.txt
 Thumbs.db
 
 # Temporary & User test artifacts
-books/
 *.tgz
-ocr_text.md
-
+books/

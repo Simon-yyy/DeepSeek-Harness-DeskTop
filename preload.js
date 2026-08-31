@@ -1,33 +1,59 @@
-
 // ---------------------------------------------------------------------------
-// Shield window.__ModuleLoader__ against duplicate registration fatal crashes
+// 🛡️ 官方 ModuleLoader 启动保护与防崩溃盾
 // ---------------------------------------------------------------------------
-try {
-  let _moduleLoader = undefined;
-  Object.defineProperty(window, "__ModuleLoader__", {
-    get() {
-      return _moduleLoader;
+(() => {
+  const pendingQueue = [];
+  const defaultLoader = {
+    mode: "queue",
+    pendingQueue,
+    load(registration) {
+      pendingQueue.push(registration);
     },
-    set(loader) {
-      if (loader && typeof loader.load === "function") {
-        const originalLoad = loader.load;
-        loader.load = function(handoff) {
-          try {
-            originalLoad.call(this, handoff);
-          } catch (err) {
-            // 优雅容错：如果是重复注册错误，直接更新 factory，绝不抛出阻断异常
-            if (this.factories && handoff && handoff.id) {
-              this.factories.set(handoff.id, handoff.factory);
-            }
-          }
-        };
+    create(options) {
+      if (this.mode !== "queue") throw new Error("client-modules: window.__ModuleLoader__.create called after module-system boot");
+      const index = pendingQueue.findIndex(r => r.id === "@deepseek-ai/dsh-client-modules");
+      const registration = pendingQueue[index];
+      if (registration === undefined) throw new Error("client-modules: HTML did not preload @deepseek-ai/dsh-client-modules/client.js");
+      pendingQueue.splice(index, 1);
+      const exports = registration.factory(specifier => {
+        throw new Error('client-modules: @deepseek-ai/dsh-client-modules/client.js requested external "' + specifier + '" before the module system existed');
+      });
+      if (typeof exports !== "object" || exports === null || typeof exports.createClientModuleSystem !== "function" || typeof exports.apply !== "function") {
+        throw new Error("client-modules: @deepseek-ai/dsh-client-modules/client.js did not export the bootstrap module face");
       }
-      _moduleLoader = loader;
-    },
-    configurable: true,
-    enumerable: true
-  });
-} catch { /* ignore */ }
+      return exports.createClientModuleSystem(this, { id: registration.id, exports }, options);
+    }
+  };
+
+  let _moduleLoader = window.__ModuleLoader__ || defaultLoader;
+
+  try {
+    Object.defineProperty(window, "__ModuleLoader__", {
+      get() {
+        return _moduleLoader;
+      },
+      set(loader) {
+        if (loader && typeof loader.load === "function") {
+          const originalLoad = loader.load;
+          loader.load = function(handoff) {
+            try {
+              originalLoad.call(this, handoff);
+            } catch (err) {
+              if (this.factories && handoff && handoff.id) {
+                this.factories.set(handoff.id, handoff.factory);
+              }
+            }
+          };
+        }
+        _moduleLoader = loader;
+      },
+      configurable: true,
+      enumerable: true
+    });
+  } catch (e) {
+    window.__ModuleLoader__ = defaultLoader;
+  }
+})();
 
 const { ipcRenderer } = require("electron");
 
@@ -60,7 +86,11 @@ function insertPathText(filePath) {
   }
 }
 
-// 拦截剪贴板截图粘贴（配合 ModLens / 视觉插件）
+// ---------------------------------------------------------------------------
+// 👁️ 原生视觉模型与多模态图片直通适配器 (Native Vision & Multi-Modal Passthrough)
+// ---------------------------------------------------------------------------
+// 最新官方 0.1.2 内核原生支持视觉模型图片上传与多模态附件；
+// 优先完全透传原生 paste 事件，让官方 Web 前端自然接管 File 对象生成 DraftImages 附件卡片。
 window.addEventListener(
   "paste",
   async (event) => {
@@ -88,23 +118,44 @@ window.addEventListener(
       }
     }
 
-    if (imageFile) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      try {
-        const arrayBuffer = await imageFile.arrayBuffer();
-        const ext = imageFile.type === "image/jpeg" ? ".jpg" : (imageFile.type === "image/webp" ? ".webp" : ".png");
-        const filePath = await ipcRenderer.invoke("save-paste-image", {
-          buffer: Array.from(new Uint8Array(arrayBuffer)),
-          ext,
-        });
+    if (!imageFile) return;
+
+    // 1. 检查是否处于对话输入框或官方多模态附件区域
+    const activeEl = document.activeElement;
+    const isInsideInput = activeEl && (
+      activeEl.tagName === "TEXTAREA" ||
+      activeEl.tagName === "INPUT" ||
+      activeEl.isContentEditable ||
+      activeEl.closest("[class*='composer']") ||
+      activeEl.closest("[class*='input']")
+    );
+
+    // 2. 如果当前在官方输入框内，优先完全透传给官方原生视觉多模态引擎！
+    if (isInsideInput) {
+      console.log("[dsh-desktop] Native vision modal detected, passing imageFile to official web frontend handler");
+      // 不执行 event.preventDefault() 与 stopImmediatePropagation()，让官方 React 前端原生接收 File 生成附件缩略图
+      return;
+    }
+
+    // 3. 仅当焦点不在输入区域时，提供安全降级（避免用户在空白处粘贴丢失图片）
+    try {
+      const arrayBuffer = await imageFile.arrayBuffer();
+      const ext = imageFile.type === "image/jpeg" ? ".jpg" : (imageFile.type === "image/webp" ? ".webp" : ".png");
+      const filePath = await ipcRenderer.invoke("save-paste-image", {
+        buffer: Array.from(new Uint8Array(arrayBuffer)),
+        ext,
+      });
+      // 如果页面上有主输入框，聚焦并告知路径
+      const textarea = document.querySelector("textarea");
+      if (textarea) {
+        textarea.focus();
         insertPathText(filePath);
-      } catch (err) {
-        console.error("[dsh-desktop] paste image failed:", err);
       }
+    } catch (err) {
+      console.error("[dsh-desktop] paste image fallback failed:", err);
     }
   },
-  true
+  false // 使用冒泡或非侵入式监听，绝不阻断捕获流
 );
 
 // ---------------------------------------------------------------------------
@@ -220,213 +271,364 @@ function scanAndEnableRestartButtons() {
 // 3. escook Light (经典紫韵浅色)
 // 4. escook Light Soft (柔和浅色)
 // ---------------------------------------------------------------------------
+// =========================================================================
+// 8 款全新精心调配的高级设计感主题矩阵 (Aesthetic Theme Palettes)
+// =========================================================================
 const ESCOOK_THEMES = {
   "dark": {
-    name: "escook Dark (经典暗黑)",
-    desc: "标志性暖橙高亮与深暗极客底色",
+    name: "escook Dark (经典暗黑 · 日落金橙)",
+    desc: "沉浸深邃蓝黑底色搭配极光日落金橙，现代极客硬朗质感",
     type: "dark",
-    colorPreview: "#EF820C",
-    bgPreview: "#252526",
+    colorPreview: "#FF8400",
+    bgPreview: "#14171F",
     css: `
-      :root, html, body, body[data-ds-dark-theme] {
-        --dsw-alias-bg-base: #252526 !important;
-        --dsw-alias-bg-layer-1: #202020 !important;
-        --dsw-alias-bg-layer-2: #29292c !important;
-        --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.6) !important;
-        --dsw-specific-sidebar-fill: #202020 !important;
-        --dsw-specific-sidebar-nav-item-hover: rgba(255, 255, 255, 0.08) !important;
-        --dsw-specific-sidebar-nav-item-active: rgba(239, 130, 12, 0.18) !important;
-        --dsw-specific-sidebar-nav-item-active-accent: #EF820C !important;
-        --dsw-specific-input-major: #29292c !important;
-        --dsw-specific-bubble: #29292c !important;
-        --dsw-specific-menu: #29292c !important;
-        --dsw-hovercard-bg: #29292c !important;
-        --dsw-alias-tooltip-bg: #202020 !important;
-        --dsw-alias-button-elevated-fill: #29292c !important;
-        --dsw-alias-button-floating-hover: #333336 !important;
-        --dsw-alias-brand-primary: #EF820C !important;
-        --dsw-alias-button-primary-fill: #EF820C !important;
-        --dsw-alias-button-primary-hover: #ff9940 !important;
-        --dsw-alias-label-primary-foreground: #ffffff !important;
-        --dsw-alias-label-primary: #fafafa !important;
-        --dsw-alias-label-secondary: #cccccc !important;
-        --dsw-alias-label-tertiary: #999999 !important;
-        --dsw-alias-label-dimmed: #777777 !important;
-        --dsw-alias-label-caption: #888888 !important;
-        --dsw-alias-interactive-bg-hover: rgba(255, 255, 255, 0.08) !important;
-        --dsw-alias-interactive-bg-active: rgba(255, 255, 255, 0.14) !important;
-        --dsw-alias-border-l1: #383838 !important;
-        --dsw-alias-border-l2: #2e2e2e !important;
-        --dsw-alias-border-l3: #444444 !important;
-        --dsw-alias-border-l4: #555555 !important;
-        --dsw-alias-markdown-code-block: #1e1e1e !important;
-        --dsw-alias-markdown-code-block-banner: #252526 !important;
-        --dsw-alias-scrollbar-bg-l2: #383838 !important;
-        --dsw-alias-scrollbar-hover-l2: #EF820C !important;
+      :root, html, body, body[data-ds-dark-theme], [data-theme="escook-dark"] {
+        --dsw-alias-bg-base: #14171F !important;
+        --dsw-alias-bg-layer-1: #0E1017 !important;
+        --dsw-alias-bg-layer-2: #1B1F2A !important;
+        --dsw-alias-bg-mask-1: rgba(10, 12, 18, 0.75) !important;
+        --dsw-specific-sidebar-fill: #0E1017 !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(255, 132, 0, 0.1) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(255, 132, 0, 0.2) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #FF8400 !important;
+        --dsw-specific-input-major: #1B1F2A !important;
+        --dsw-specific-bubble: #1B1F2A !important;
+        --dsw-specific-menu: #161922 !important;
+        --dsw-hovercard-bg: #161922 !important;
+        --dsw-alias-tooltip-bg: #222736 !important;
+        --dsw-alias-button-elevated-fill: #1B1F2A !important;
+        --dsw-alias-button-floating-hover: #262C3D !important;
+        --dsw-alias-brand-primary: #FF8400 !important;
+        --dsw-alias-button-primary-fill: #FF8400 !important;
+        --dsw-alias-button-primary-hover: #FFA033 !important;
+        --dsw-alias-label-primary-foreground: #000000 !important;
+        --dsw-alias-label-primary: #F4F6FB !important;
+        --dsw-alias-label-secondary: #9CA3AF !important;
+        --dsw-alias-label-tertiary: #6B7280 !important;
+        --dsw-alias-label-dimmed: #4B5563 !important;
+        --dsw-alias-label-caption: #6B7280 !important;
+        --dsw-alias-interactive-bg-hover: rgba(255, 132, 0, 0.1) !important;
+        --dsw-alias-interactive-bg-active: rgba(255, 132, 0, 0.2) !important;
+        --dsw-alias-border-l1: #2A3042 !important;
+        --dsw-alias-border-l2: #212635 !important;
+        --dsw-alias-border-l3: #384058 !important;
+        --dsw-alias-border-l4: #4B5563 !important;
+        --dsw-alias-markdown-code-block: #0C0E14 !important;
+        --dsw-alias-markdown-code-block-banner: #14171F !important;
+        --dsw-alias-scrollbar-bg-l2: #2A3042 !important;
+        --dsw-alias-scrollbar-hover-l2: #FF8400 !important;
       }
-      body, body[data-ds-dark-theme] { background-color: #252526 !important; color: #fafafa !important; }
+      body, body[data-ds-dark-theme] { background-color: #14171F !important; color: #F4F6FB !important; }
       pre, code, [class*="codeBlock"] {
-        background-color: #1e1e1e !important;
-        color: #d4d4d4 !important;
-        border-color: #383838 !important;
+        background-color: #0C0E14 !important;
+        color: #F4F6FB !important;
+        border-color: #2A3042 !important;
       }
     `
   },
   "dark-soft": {
-    name: "escook Dark Soft (柔和暗黑)",
-    desc: "优雅暗夜紫调、琥珀金按钮与高对比度语法高亮",
+    name: "escook Dark Soft (柔和暗黑 · 琥珀流金)",
+    desc: "温润哑光深青夜幕底色搭配柔和琥珀流金，长效护眼防疲劳",
     type: "dark",
-    colorPreview: "#ffcc66",
-    bgPreview: "#1f2430",
+    colorPreview: "#F6C177",
+    bgPreview: "#1A1E29",
     css: `
-      :root, html, body, body[data-ds-dark-theme] {
-        --dsw-alias-bg-base: #1f2430 !important;
-        --dsw-alias-bg-layer-1: #191e2a !important;
-        --dsw-alias-bg-layer-2: #232834 !important;
-        --dsw-alias-bg-mask-1: rgba(15, 18, 26, 0.65) !important;
-        --dsw-specific-sidebar-fill: #191e2a !important;
-        --dsw-specific-sidebar-nav-item-hover: rgba(255, 204, 102, 0.08) !important;
-        --dsw-specific-sidebar-nav-item-active: rgba(255, 204, 102, 0.16) !important;
-        --dsw-specific-sidebar-nav-item-active-accent: #ffcc66 !important;
-        --dsw-specific-input-major: #232834 !important;
-        --dsw-specific-bubble: #232834 !important;
-        --dsw-specific-menu: #232834 !important;
-        --dsw-hovercard-bg: #232834 !important;
-        --dsw-alias-tooltip-bg: #191e2a !important;
-        --dsw-alias-button-elevated-fill: #232834 !important;
-        --dsw-alias-button-floating-hover: #2b3240 !important;
-        --dsw-alias-brand-primary: #ffcc66 !important;
-        --dsw-alias-button-primary-fill: #ffcc66 !important;
-        --dsw-alias-button-primary-hover: #fac761 !important;
-        --dsw-alias-label-primary-foreground: #1f2430 !important;
-        --dsw-alias-label-primary: #cbccc6 !important;
-        --dsw-alias-label-secondary: #969aa4 !important;
-        --dsw-alias-label-tertiary: #707a8c !important;
-        --dsw-alias-label-dimmed: #5c6773 !important;
-        --dsw-alias-label-caption: #707a8c !important;
-        --dsw-alias-interactive-bg-hover: rgba(255, 204, 102, 0.1) !important;
-        --dsw-alias-interactive-bg-active: rgba(255, 204, 102, 0.18) !important;
-        --dsw-alias-border-l1: #373e4c !important;
-        --dsw-alias-border-l2: #2d3443 !important;
-        --dsw-alias-border-l3: #4f5869 !important;
-        --dsw-alias-border-l4: #636e84 !important;
-        --dsw-alias-markdown-code-block: #1a1f29 !important;
-        --dsw-alias-markdown-code-block-banner: #232834 !important;
-        --dsw-alias-scrollbar-bg-l2: #373e4c !important;
-        --dsw-alias-scrollbar-hover-l2: #ffcc66 !important;
+      :root, html, body, body[data-ds-dark-theme], [data-theme="escook-dark-soft"] {
+        --dsw-alias-bg-base: #1A1E29 !important;
+        --dsw-alias-bg-layer-1: #141720 !important;
+        --dsw-alias-bg-layer-2: #212735 !important;
+        --dsw-alias-bg-mask-1: rgba(14, 16, 24, 0.7) !important;
+        --dsw-specific-sidebar-fill: #141720 !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(246, 193, 119, 0.1) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(246, 193, 119, 0.18) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #F6C177 !important;
+        --dsw-specific-input-major: #212735 !important;
+        --dsw-specific-bubble: #212735 !important;
+        --dsw-specific-menu: #1B202B !important;
+        --dsw-hovercard-bg: #1B202B !important;
+        --dsw-alias-tooltip-bg: #293042 !important;
+        --dsw-alias-button-elevated-fill: #212735 !important;
+        --dsw-alias-button-floating-hover: #2B3346 !important;
+        --dsw-alias-brand-primary: #F6C177 !important;
+        --dsw-alias-button-primary-fill: #F6C177 !important;
+        --dsw-alias-button-primary-hover: #FAD49E !important;
+        --dsw-alias-label-primary-foreground: #1A1E29 !important;
+        --dsw-alias-label-primary: #D5DAE5 !important;
+        --dsw-alias-label-secondary: #8C95A6 !important;
+        --dsw-alias-label-tertiary: #677082 !important;
+        --dsw-alias-label-dimmed: #4E5666 !important;
+        --dsw-alias-label-caption: #677082 !important;
+        --dsw-alias-interactive-bg-hover: rgba(246, 193, 119, 0.1) !important;
+        --dsw-alias-interactive-bg-active: rgba(246, 193, 119, 0.18) !important;
+        --dsw-alias-border-l1: #2B3242 !important;
+        --dsw-alias-border-l2: #232938 !important;
+        --dsw-alias-border-l3: #3B4459 !important;
+        --dsw-alias-border-l4: #4E5666 !important;
+        --dsw-alias-markdown-code-block: #12151D !important;
+        --dsw-alias-markdown-code-block-banner: #181C26 !important;
+        --dsw-alias-scrollbar-bg-l2: #2B3242 !important;
+        --dsw-alias-scrollbar-hover-l2: #F6C177 !important;
       }
-      body, body[data-ds-dark-theme] { background-color: #1f2430 !important; color: #cbccc6 !important; }
+      body, body[data-ds-dark-theme] { background-color: #1A1E29 !important; color: #D5DAE5 !important; }
       pre, code, [class*="codeBlock"] {
-        background-color: #1a1f29 !important;
-        color: #cbccc6 !important;
-        border-color: #2d3443 !important;
+        background-color: #12151D !important;
+        color: #D5DAE5 !important;
+        border-color: #2B3242 !important;
       }
-      .hljs-keyword, .token.keyword { color: #f28779 !important; font-weight: 600; }
-      .hljs-string, .token.string { color: #bae67e !important; }
-      .hljs-function, .token.function { color: #73d0ff !important; }
-      .hljs-number, .token.number { color: #ff9940 !important; }
-      .hljs-comment, .token.comment { color: #5c6773 !important; font-style: italic; }
     `
   },
   "light": {
-    name: "escook Light (经典紫韵浅色)",
-    desc: "暖白羊皮纸背景配罗兰紫强调色与高对比度文字",
+    name: "escook Light (经典紫韵 · 皇家罗兰)",
+    desc: "法式法兰绒暖米白搭配典雅皇家罗兰紫，极富书卷杂志质感",
     type: "light",
-    colorPreview: "#705697",
-    bgPreview: "#FDF6E3",
+    colorPreview: "#7C3AED",
+    bgPreview: "#FAF8F5",
     css: `
-      :root, html, body, body[data-ds-dark-theme] {
-        --dsw-alias-bg-base: #FDF6E3 !important;
-        --dsw-alias-bg-layer-1: #F5EEDB !important;
-        --dsw-alias-bg-layer-2: #EDE5D0 !important;
-        --dsw-alias-bg-mask-1: rgba(88, 70, 50, 0.35) !important;
-        --dsw-specific-sidebar-fill: #F5EEDB !important;
-        --dsw-specific-sidebar-nav-item-hover: rgba(112, 86, 151, 0.08) !important;
-        --dsw-specific-sidebar-nav-item-active: rgba(112, 86, 151, 0.16) !important;
-        --dsw-specific-sidebar-nav-item-active-accent: #705697 !important;
-        --dsw-specific-input-major: #EDE5D0 !important;
-        --dsw-specific-bubble: #EDE5D0 !important;
-        --dsw-specific-menu: #FFFFFF !important;
-        --dsw-hovercard-bg: #FFFFFF !important;
-        --dsw-alias-tooltip-bg: #2B2B2B !important;
-        --dsw-alias-button-elevated-fill: #EDE5D0 !important;
-        --dsw-alias-button-floating-hover: #e4dcc4 !important;
-        --dsw-alias-brand-primary: #705697 !important;
-        --dsw-alias-button-primary-fill: #705697 !important;
-        --dsw-alias-button-primary-hover: #8a6ab8 !important;
-        --dsw-alias-label-primary-foreground: #ffffff !important;
-        --dsw-alias-label-primary: #2b2b2b !important;
-        --dsw-alias-label-secondary: #4a5c63 !important;
-        --dsw-alias-label-tertiary: #657b83 !important;
-        --dsw-alias-label-dimmed: #839496 !important;
-        --dsw-alias-label-caption: #657b83 !important;
-        --dsw-alias-interactive-bg-hover: rgba(112, 86, 151, 0.08) !important;
-        --dsw-alias-interactive-bg-active: rgba(112, 86, 151, 0.15) !important;
-        --dsw-alias-border-l1: #d3cbb7 !important;
-        --dsw-alias-border-l2: #e2dbca !important;
-        --dsw-alias-border-l3: #ccc4af !important;
-        --dsw-alias-border-l4: #b8af98 !important;
-        --dsw-alias-markdown-code-block: #f7f0dc !important;
-        --dsw-alias-markdown-code-block-banner: #ede5d0 !important;
-        --dsw-alias-scrollbar-bg-l2: #d3cbb7 !important;
-        --dsw-alias-scrollbar-hover-l2: #705697 !important;
-      }
-      body, body[data-ds-dark-theme] { background-color: #FDF6E3 !important; color: #2b2b2b !important; }
-      pre, code, [class*="codeBlock"] {
-        background-color: #f7f0dc !important;
-        color: #2b2b2b !important;
-        border-color: #d3cbb7 !important;
-      }
-    `
-  },
-  "light-soft": {
-    name: "escook Light Soft (柔和浅色)",
-    desc: "轻盈素雅纯净白调与柔和暖橙强调色",
-    type: "light",
-    colorPreview: "#ff9940",
-    bgPreview: "#FAFAFA",
-    css: `
-      :root, html, body, body[data-ds-dark-theme] {
-        --dsw-alias-bg-base: #FAFAFA !important;
-        --dsw-alias-bg-layer-1: #F0F0F0 !important;
+      :root, html, body, body[data-ds-dark-theme], [data-theme="escook-light"] {
+        --dsw-alias-bg-base: #FAF8F5 !important;
+        --dsw-alias-bg-layer-1: #F3EFEA !important;
         --dsw-alias-bg-layer-2: #FFFFFF !important;
-        --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.3) !important;
-        --dsw-specific-sidebar-fill: #F0F0F0 !important;
-        --dsw-specific-sidebar-nav-item-hover: rgba(255, 153, 64, 0.08) !important;
-        --dsw-specific-sidebar-nav-item-active: rgba(255, 153, 64, 0.16) !important;
-        --dsw-specific-sidebar-nav-item-active-accent: #ff9940 !important;
+        --dsw-alias-bg-mask-1: rgba(60, 50, 70, 0.3) !important;
+        --dsw-specific-sidebar-fill: #F3EFEA !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(124, 58, 237, 0.08) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(124, 58, 237, 0.16) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #7C3AED !important;
         --dsw-specific-input-major: #FFFFFF !important;
         --dsw-specific-bubble: #FFFFFF !important;
         --dsw-specific-menu: #FFFFFF !important;
         --dsw-hovercard-bg: #FFFFFF !important;
-        --dsw-alias-tooltip-bg: #1F2937 !important;
+        --dsw-alias-tooltip-bg: #1E1B24 !important;
         --dsw-alias-button-elevated-fill: #FFFFFF !important;
-        --dsw-alias-button-floating-hover: #f5f5f5 !important;
-        --dsw-alias-brand-primary: #ff9940 !important;
-        --dsw-alias-button-primary-fill: #ff9940 !important;
-        --dsw-alias-button-primary-hover: #ffaa5e !important;
-        --dsw-alias-label-primary-foreground: #ffffff !important;
-        --dsw-alias-label-primary: #1F2937 !important;
-        --dsw-alias-label-secondary: #4B5563 !important;
-        --dsw-alias-label-tertiary: #6B7280 !important;
-        --dsw-alias-label-dimmed: #9CA3AF !important;
-        --dsw-alias-label-caption: #6B7280 !important;
-        --dsw-alias-interactive-bg-hover: rgba(255, 153, 64, 0.08) !important;
-        --dsw-alias-interactive-bg-active: rgba(255, 153, 64, 0.15) !important;
-        --dsw-alias-border-l1: #E5E7EB !important;
-        --dsw-alias-border-l2: #F3F4F6 !important;
-        --dsw-alias-border-l3: #D1D5DB !important;
-        --dsw-alias-border-l4: #9CA3AF !important;
-        --dsw-alias-markdown-code-block: #f4f4f5 !important;
-        --dsw-alias-markdown-code-block-banner: #e5e7eb !important;
-        --dsw-alias-scrollbar-bg-l2: #E5E7EB !important;
-        --dsw-alias-scrollbar-hover-l2: #ff9940 !important;
+        --dsw-alias-button-floating-hover: #F3EFEA !important;
+        --dsw-alias-brand-primary: #7C3AED !important;
+        --dsw-alias-button-primary-fill: #7C3AED !important;
+        --dsw-alias-button-primary-hover: #8B5CF6 !important;
+        --dsw-alias-label-primary-foreground: #FFFFFF !important;
+        --dsw-alias-label-primary: #1E1B24 !important;
+        --dsw-alias-label-secondary: #524E5B !important;
+        --dsw-alias-label-tertiary: #716C7B !important;
+        --dsw-alias-label-dimmed: #9A94A4 !important;
+        --dsw-alias-label-caption: #716C7B !important;
+        --dsw-alias-interactive-bg-hover: rgba(124, 58, 237, 0.08) !important;
+        --dsw-alias-interactive-bg-active: rgba(124, 58, 237, 0.15) !important;
+        --dsw-alias-border-l1: #E6E0D8 !important;
+        --dsw-alias-border-l2: #F0EAE2 !important;
+        --dsw-alias-border-l3: #DDD6CE !important;
+        --dsw-alias-border-l4: #9A94A4 !important;
+        --dsw-alias-markdown-code-block: #F4EFE9 !important;
+        --dsw-alias-markdown-code-block-banner: #EAE3DA !important;
+        --dsw-alias-scrollbar-bg-l2: #E6E0D8 !important;
+        --dsw-alias-scrollbar-hover-l2: #7C3AED !important;
       }
-      body, body[data-ds-dark-theme] { background-color: #FAFAFA !important; color: #1F2937 !important; }
+      body, body[data-ds-dark-theme] { background-color: #FAF8F5 !important; color: #1E1B24 !important; }
       pre, code, [class*="codeBlock"] {
-        background-color: #f4f4f5 !important;
-        color: #1F2937 !important;
-        border-color: #E5E7EB !important;
+        background-color: #F4EFE9 !important;
+        color: #1E1B24 !important;
+        border-color: #E6E0D8 !important;
+      }
+    `
+  },
+  "light-soft": {
+    name: "escook Light Soft (柔和浅色 · 蜜柑亮橙)",
+    desc: "清透微晨纯白搭配活力蜜柑亮橙，清爽明亮不刺眼",
+    type: "light",
+    colorPreview: "#FF6B00",
+    bgPreview: "#F8FAFC",
+    css: `
+      :root, html, body, body[data-ds-dark-theme], [data-theme="escook-light-soft"] {
+        --dsw-alias-bg-base: #F8FAFC !important;
+        --dsw-alias-bg-layer-1: #F1F5F9 !important;
+        --dsw-alias-bg-layer-2: #FFFFFF !important;
+        --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.25) !important;
+        --dsw-specific-sidebar-fill: #F1F5F9 !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(255, 107, 0, 0.08) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(255, 107, 0, 0.16) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #FF6B00 !important;
+        --dsw-specific-input-major: #FFFFFF !important;
+        --dsw-specific-bubble: #FFFFFF !important;
+        --dsw-specific-menu: #FFFFFF !important;
+        --dsw-hovercard-bg: #FFFFFF !important;
+        --dsw-alias-tooltip-bg: #0F172A !important;
+        --dsw-alias-button-elevated-fill: #FFFFFF !important;
+        --dsw-alias-button-floating-hover: #F1F5F9 !important;
+        --dsw-alias-brand-primary: #FF6B00 !important;
+        --dsw-alias-button-primary-fill: #FF6B00 !important;
+        --dsw-alias-button-primary-hover: #FF8533 !important;
+        --dsw-alias-label-primary-foreground: #FFFFFF !important;
+        --dsw-alias-label-primary: #0F172A !important;
+        --dsw-alias-label-secondary: #475569 !important;
+        --dsw-alias-label-tertiary: #64748B !important;
+        --dsw-alias-label-dimmed: #94A3B8 !important;
+        --dsw-alias-label-caption: #64748B !important;
+        --dsw-alias-interactive-bg-hover: rgba(255, 107, 0, 0.08) !important;
+        --dsw-alias-interactive-bg-active: rgba(255, 107, 0, 0.15) !important;
+        --dsw-alias-border-l1: #E2E8F0 !important;
+        --dsw-alias-border-l2: #F1F5F9 !important;
+        --dsw-alias-border-l3: #CBD5E1 !important;
+        --dsw-alias-border-l4: #94A3B8 !important;
+        --dsw-alias-markdown-code-block: #F1F5F9 !important;
+        --dsw-alias-markdown-code-block-banner: #E2E8F0 !important;
+        --dsw-alias-scrollbar-bg-l2: #E2E8F0 !important;
+        --dsw-alias-scrollbar-hover-l2: #FF6B00 !important;
+      }
+      body, body[data-ds-dark-theme] { background-color: #F8FAFC !important; color: #0F172A !important; }
+      pre, code, [class*="codeBlock"] {
+        background-color: #F1F5F9 !important;
+        color: #0F172A !important;
+        border-color: #E2E8F0 !important;
+      }
+    `
+  },
+  "deepseek-dark": {
+    name: "DeepSeek 极客深邃蓝",
+    desc: "纯正星空蓝黑底色搭配科技动感电光蓝，现代极客首选",
+    type: "dark",
+    colorPreview: "#3B82F6",
+    bgPreview: "#0B0F17",
+    css: `
+      :root, html, body, body[data-ds-dark-theme] {
+        --dsw-alias-bg-base: #0B0F17 !important;
+        --dsw-alias-bg-layer-1: #111827 !important;
+        --dsw-alias-bg-layer-2: #161F30 !important;
+        --dsw-alias-bg-mask-1: rgba(5, 8, 15, 0.75) !important;
+        --dsw-specific-sidebar-fill: #0E1420 !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(59, 130, 246, 0.1) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(59, 130, 246, 0.18) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #3B82F6 !important;
+        --dsw-specific-input-major: #161F30 !important;
+        --dsw-specific-bubble: #161F30 !important;
+        --dsw-specific-menu: #131A29 !important;
+        --dsw-hovercard-bg: #131A29 !important;
+        --dsw-alias-tooltip-bg: #1E293B !important;
+        --dsw-alias-button-elevated-fill: #1E293B !important;
+        --dsw-alias-button-floating-hover: #26354D !important;
+        --dsw-alias-brand-primary: #3B82F6 !important;
+        --dsw-alias-button-primary-fill: #2563EB !important;
+        --dsw-alias-button-primary-hover: #3B82F6 !important;
+        --dsw-alias-label-primary-foreground: #FFFFFF !important;
+        --dsw-alias-label-primary: #F1F5F9 !important;
+        --dsw-alias-label-secondary: #94A3B8 !important;
+        --dsw-alias-label-tertiary: #64748B !important;
+        --dsw-alias-label-dimmed: #475569 !important;
+        --dsw-alias-label-caption: #64748B !important;
+        --dsw-alias-interactive-bg-hover: rgba(59, 130, 246, 0.1) !important;
+        --dsw-alias-interactive-bg-active: rgba(59, 130, 246, 0.2) !important;
+        --dsw-alias-border-l1: #1E293B !important;
+        --dsw-alias-border-l2: #192436 !important;
+        --dsw-alias-border-l3: #334155 !important;
+        --dsw-alias-border-l4: #475569 !important;
+        --dsw-alias-markdown-code-block: #090D14 !important;
+        --dsw-alias-markdown-code-block-banner: #111827 !important;
+        --dsw-alias-scrollbar-bg-l2: #1E293B !important;
+        --dsw-alias-scrollbar-hover-l2: #3B82F6 !important;
+      }
+      body, body[data-ds-dark-theme] { background-color: #0B0F17 !important; color: #F1F5F9 !important; }
+      pre, code, [class*="codeBlock"] {
+        background-color: #090D14 !important;
+        color: #F1F5F9 !important;
+        border-color: #1E293B !important;
+      }
+    `
+  },
+  "catppuccin-mocha": {
+    name: "摩卡暗夜紫 (Catppuccin Mocha)",
+    desc: "优雅治愈的哑光暗夜紫调，搭配马卡龙玫瑰粉与罗兰紫",
+    type: "dark",
+    colorPreview: "#CBA6F7",
+    bgPreview: "#1E1E2E",
+    css: `
+      :root, html, body, body[data-ds-dark-theme] {
+        --dsw-alias-bg-base: #1E1E2E !important;
+        --dsw-alias-bg-layer-1: #181825 !important;
+        --dsw-alias-bg-layer-2: #313244 !important;
+        --dsw-alias-bg-mask-1: rgba(17, 17, 27, 0.7) !important;
+        --dsw-specific-sidebar-fill: #181825 !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(203, 166, 247, 0.1) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(203, 166, 247, 0.2) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #CBA6F7 !important;
+        --dsw-specific-input-major: #242438 !important;
+        --dsw-specific-bubble: #242438 !important;
+        --dsw-specific-menu: #181825 !important;
+        --dsw-hovercard-bg: #181825 !important;
+        --dsw-alias-tooltip-bg: #313244 !important;
+        --dsw-alias-button-elevated-fill: #313244 !important;
+        --dsw-alias-button-floating-hover: #45475A !important;
+        --dsw-alias-brand-primary: #CBA6F7 !important;
+        --dsw-alias-button-primary-fill: #CBA6F7 !important;
+        --dsw-alias-button-primary-hover: #B4BEFE !important;
+        --dsw-alias-label-primary-foreground: #11111B !important;
+        --dsw-alias-label-primary: #CDD6F4 !important;
+        --dsw-alias-label-secondary: #A6ADC8 !important;
+        --dsw-alias-label-tertiary: #7F849C !important;
+        --dsw-alias-label-dimmed: #585B70 !important;
+        --dsw-alias-label-caption: #7F849C !important;
+        --dsw-alias-interactive-bg-hover: rgba(203, 166, 247, 0.1) !important;
+        --dsw-alias-interactive-bg-active: rgba(203, 166, 247, 0.2) !important;
+        --dsw-alias-border-l1: #313244 !important;
+        --dsw-alias-border-l2: #28283D !important;
+        --dsw-alias-border-l3: #45475A !important;
+        --dsw-alias-border-l4: #585B70 !important;
+        --dsw-alias-markdown-code-block: #11111B !important;
+        --dsw-alias-markdown-code-block-banner: #181825 !important;
+        --dsw-alias-scrollbar-bg-l2: #313244 !important;
+        --dsw-alias-scrollbar-hover-l2: #CBA6F7 !important;
+      }
+      body, body[data-ds-dark-theme] { background-color: #1E1E2E !important; color: #CDD6F4 !important; }
+      pre, code, [class*="codeBlock"] {
+        background-color: #11111B !important;
+        color: #CDD6F4 !important;
+        border-color: #313244 !important;
+      }
+    `
+  },
+  "tokyo-night": {
+    name: "东京暗夜霓虹 (Tokyo Night)",
+    desc: "充满未来科技感的青紫夜景配色，电光蓝与暖日落点缀",
+    type: "dark",
+    colorPreview: "#7AA2F7",
+    bgPreview: "#1A1B26",
+    css: `
+      :root, html, body, body[data-ds-dark-theme] {
+        --dsw-alias-bg-base: #1A1B26 !important;
+        --dsw-alias-bg-layer-1: #16161E !important;
+        --dsw-alias-bg-layer-2: #24283B !important;
+        --dsw-alias-bg-mask-1: rgba(15, 15, 23, 0.75) !important;
+        --dsw-specific-sidebar-fill: #16161E !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(122, 162, 247, 0.1) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(122, 162, 247, 0.2) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #7AA2F7 !important;
+        --dsw-specific-input-major: #24283B !important;
+        --dsw-specific-bubble: #24283B !important;
+        --dsw-specific-menu: #1F2335 !important;
+        --dsw-hovercard-bg: #1F2335 !important;
+        --dsw-alias-tooltip-bg: #292E42 !important;
+        --dsw-alias-button-elevated-fill: #24283B !important;
+        --dsw-alias-button-floating-hover: #2F354F !important;
+        --dsw-alias-brand-primary: #7AA2F7 !important;
+        --dsw-alias-button-primary-fill: #7AA2F7 !important;
+        --dsw-alias-button-primary-hover: #89B4FA !important;
+        --dsw-alias-label-primary-foreground: #1A1B26 !important;
+        --dsw-alias-label-primary: #C0CAF5 !important;
+        --dsw-alias-label-secondary: #9AA5CE !important;
+        --dsw-alias-label-tertiary: #787C99 !important;
+        --dsw-alias-label-dimmed: #565F89 !important;
+        --dsw-alias-label-caption: #787C99 !important;
+        --dsw-alias-interactive-bg-hover: rgba(122, 162, 247, 0.1) !important;
+        --dsw-alias-interactive-bg-active: rgba(122, 162, 247, 0.2) !important;
+        --dsw-alias-border-l1: #292E42 !important;
+        --dsw-alias-border-l2: #23283B !important;
+        --dsw-alias-border-l3: #3B4261 !important;
+        --dsw-alias-border-l4: #565F89 !important;
+        --dsw-alias-markdown-code-block: #13141C !important;
+        --dsw-alias-markdown-code-block-banner: #16161E !important;
+        --dsw-alias-scrollbar-bg-l2: #292E42 !important;
+        --dsw-alias-scrollbar-hover-l2: #7AA2F7 !important;
+      }
+      body, body[data-ds-dark-theme] { background-color: #1A1B26 !important; color: #C0CAF5 !important; }
+      pre, code, [class*="codeBlock"] {
+        background-color: #13141C !important;
+        color: #C0CAF5 !important;
+        border-color: #292E42 !important;
       }
     `
   }
@@ -792,21 +994,24 @@ function showAboutModal() {
         </div>
       </div>
 
-      <!-- 核心特性与亮点 -->
+      <!-- 核心特性与亮点 (v1.2.0) -->
       <div style="margin-bottom: 20px;">
-        <div style="font-size: 13px; font-weight: 600; margin-bottom: 10px;">🌟 核心特性</div>
+        <div style="font-size: 13px; font-weight: 600; margin-bottom: 10px;">🌟 核心特性 (v1.2.0)</div>
         <div style="display: grid; gap: 8px; font-size: 12px; line-height: 1.5;">
-          <div style="padding: 8px 12px; background: ${itemBg}; border-radius: 8px; border-left: 3px solid #2563eb;">
-            <strong>🚀 客户端与内核双无感升级</strong>：外壳与官方内核均支持一键热升级。
+          <div style="padding: 8px 12px; background: ${itemBg}; border-radius: 8px; border-left: 3px solid #3b82f6;">
+            <strong>👁️ 官方原生视觉多模态支持</strong>：深度适配 0.1.2 官方内核，支持图片拖拽/粘贴直传与原生视觉理解。
           </div>
-          <div style="padding: 8px 12px; background: ${itemBg}; border-radius: 8px; border-left: 3px solid #10b981;">
-            <strong>⚡ 插件市场【立即重启】解锁</strong>：安装插件后点击立即重启后端服务生效。
+          <div style="padding: 8px 12px; background: ${itemBg}; border-radius: 8px; border-left: 3px solid #f59e0b;">
+            <strong>🎨 4 款专属精雕美学主题</strong>：重构日落金橙、琥珀流金、皇家罗兰、蜜柑亮橙等 8 款高质感配色矩阵，即时无缝换肤。
           </div>
           <div style="padding: 8px 12px; background: ${itemBg}; border-radius: 8px; border-left: 3px solid #8b5cf6;">
-            <strong>🖼️ ModLens 视觉直通</strong>：截图 Ctrl+V 直通纯文本大模型。
+            <strong>🧩 5 大社区生态插件深度兼容</strong>：插件市场（DSH Market）、侧边栏增强工作台、自动执行模式等开箱即用。
+          </div>
+          <div style="padding: 8px 12px; background: ${itemBg}; border-radius: 8px; border-left: 3px solid #10b981;">
+            <strong>⚡ 客户端与官方内核双热升级</strong>：外壳与官方内核均支持一键在线版本检测、静默下载与秒级热重载。
           </div>
           <div style="padding: 8px 12px; background: ${itemBg}; border-radius: 8px; border-left: 3px solid #06b6d4;">
-            <strong>🧩 35 个全流程技能</strong>：内置 TDD、代码审查等技能，开箱即用。
+            <strong>🛠️ 35 个工业级研发技能库</strong>：内置 TDD 测试驱动、代码审查、架构设计等 35 个 Matt Pocock 专家技能。
           </div>
         </div>
       </div>
@@ -890,72 +1095,138 @@ function showAboutModal() {
 }
 
 // ---------------------------------------------------------------------------
-// Native Desktop Hook: 在设置弹窗中分别注入【主题外观】与【关于】Tab
+// 🌟 终极优雅分流引擎：内置模块右侧内嵌 + 桌面专有模块独立弹窗
 // ---------------------------------------------------------------------------
+function getTrueRightContentArea(tabContainer) {
+  let curr = tabContainer;
+  while (curr && curr.parentElement && curr.parentElement !== document.body) {
+    const parent = curr.parentElement;
+    const children = Array.from(parent.children);
+    if (children.length === 2) {
+      const right = children.find(c => !c.contains(tabContainer));
+      if (right) return right;
+    }
+    curr = parent;
+  }
+  let p = tabContainer.parentElement;
+  while (p && p !== document.body) {
+    const siblings = Array.from(p.children).filter(c => !c.contains(tabContainer));
+    const hit = siblings.find(s => s.getBoundingClientRect().width > 300);
+    if (hit) return hit;
+    p = p.parentElement;
+  }
+  return null;
+}
+
+// =========================================================================
+// 设置弹窗侧边栏选项卡精准注入（主题外观、关于）
+// =========================================================================
 function injectCustomTabsIntoSettings() {
-  const allButtons = Array.from(document.querySelectorAll("button, [role='tab'], div[role='button']"));
-  const marketTab = allButtons.find((btn) => {
-    const text = (btn.textContent || "").trim();
-    return text.includes("插件市场") || text === "插件市场";
+  // 移除旧顶栏
+  const oldBar = document.getElementById("dsh-quick-actions-bar");
+  if (oldBar) oldBar.remove();
+
+  // 1. 定位设置弹窗中的 "通用设置" 按钮
+  const allClickables = Array.from(document.querySelectorAll("button, [role='tab'], div[role='button']"));
+  const generalBtn = allClickables.find(b => {
+    const t = (b.textContent || "").trim();
+    return t === "通用设置" || t === "General" || t.startsWith("通用设置");
   });
 
-  if (!marketTab || !marketTab.parentNode) return;
-  const tabContainer = marketTab.parentNode;
+  if (!generalBtn) return;
 
-  // 1. 注入【主题外观】Tab
-  if (!tabContainer.querySelector(".dsh-theme-custom-tab")) {
-    const themeTab = marketTab.cloneNode(true);
-    themeTab.className = marketTab.className + " dsh-theme-custom-tab";
-    themeTab.innerHTML = `
-      <span style="display: inline-flex; align-items: center; gap: 8px; width: 100%;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"></circle>
-          <path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12a10 10 0 0 1 10-10z"></path>
-          <path d="m4.93 4.93 4.24 4.24"></path>
-          <path d="m14.83 9.17 4.24-4.24"></path>
-          <path d="m14.83 14.83 4.24 4.24"></path>
-          <path d="m4.93 19.07 4.24-4.24"></path>
-        </svg>
-        <span>主题外观</span>
-      </span>
-    `;
-    themeTab.setAttribute("aria-selected", "false");
-    themeTab.style.cursor = "pointer";
-    themeTab.dataset.dshCustomTab = "theme";
-    marketTab.after(themeTab);
-
-    themeTab.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      showThemeModal();
-    });
+  // 2. 向上寻找侧边栏的真正列表容器
+  let navList = generalBtn.parentElement;
+  let curr = generalBtn.parentElement;
+  while (curr && curr !== document.body) {
+    const buttons = Array.from(curr.querySelectorAll("button, [role='tab'], div[role='button']"));
+    const texts = buttons.map(b => (b.textContent || "").trim());
+    if (texts.some(t => t.includes("通用设置")) && 
+       (texts.some(t => t.includes("模型")) || texts.some(t => t.includes("插件市场")) || texts.some(t => t.includes("侧边卡片")))) {
+      navList = curr;
+      // 如果当前容器的直接子元素包含多个 tab 项，则锁定该容器
+      if (curr.children.length >= 4) {
+        break;
+      }
+    }
+    curr = curr.parentElement;
   }
 
-  // 2. 注入【关于】Tab
-  if (!tabContainer.querySelector(".dsh-about-custom-tab")) {
-    const themeTab = tabContainer.querySelector(".dsh-theme-custom-tab") || marketTab;
-    const aboutTab = marketTab.cloneNode(true);
-    aboutTab.className = marketTab.className + " dsh-about-custom-tab";
-    aboutTab.innerHTML = `
-      <span style="display: inline-flex; align-items: center; gap: 8px; width: 100%;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="16" x2="12" y2="12"></line>
-          <line x1="12" y1="8" x2="12.01" y2="8"></line>
-        </svg>
-        <span>关于</span>
+  if (!navList) return;
+
+  // 找到定位基准元素（优先排在 侧边卡片 或 插件市场 之后）
+  const allCurrentTabs = Array.from(navList.querySelectorAll("button, [role='tab'], div[role='button']"));
+  const anchorTab = allCurrentTabs.reverse().find(b => {
+    const t = (b.textContent || "").trim();
+    return t.includes("侧边卡片") || t.includes("插件市场") || t.includes("Agent 预设") || t.includes("通用设置");
+  }) || generalBtn;
+
+  const targetContainer = anchorTab.parentElement || navList;
+
+  // 检查是否已经注入
+  const alreadyHasTheme = Array.from(targetContainer.querySelectorAll("*")).some(el => (el.textContent || "").trim().includes("主题外观"));
+  const alreadyHasAbout = Array.from(targetContainer.querySelectorAll("*")).some(el => (el.textContent || "").trim().includes("关于"));
+
+  // 辅助函数：创建统一外观的侧边栏 Tab 项
+  function createSidebarTab(id, label, iconSvg, onClick) {
+    // 优先克隆通用设置按钮以保持 100% 原生尺寸、类名和排版
+    let tab = generalBtn.cloneNode(true);
+    tab.removeAttribute("id");
+    tab.className = generalBtn.className;
+    tab.setAttribute("data-dsh-custom-tab", id);
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-selected", "false");
+    tab.style.cursor = "pointer";
+    tab.style.display = "flex";
+    tab.style.alignItems = "center";
+    tab.style.width = "100%";
+    tab.style.margin = "2px 0";
+    tab.style.userSelect = "none";
+    tab.style.transition = "all 0.15s ease";
+
+    // 注入图标与文本
+    tab.innerHTML = `
+      <span style="display: inline-flex; align-items: center; gap: 8px; width: 100%; font-size: inherit; font-family: inherit;">
+        <span style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; opacity: 0.85; flex-shrink: 0;">
+          ${iconSvg}
+        </span>
+        <span style="flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500;">${label}</span>
       </span>
     `;
-    aboutTab.setAttribute("aria-selected", "false");
-    aboutTab.style.cursor = "pointer";
-    aboutTab.dataset.dshCustomTab = "about";
-    themeTab.after(aboutTab);
 
-    aboutTab.addEventListener("click", (e) => {
+    tab.addEventListener("mouseenter", () => {
+      const isDark = document.documentElement.classList.contains("dark") || document.body.classList.contains("dark");
+      tab.style.backgroundColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.05)";
+    });
+    tab.addEventListener("mouseleave", () => {
+      tab.style.backgroundColor = "transparent";
+    });
+
+    tab.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      onClick();
+    });
+
+    return tab;
+  }
+
+  // 注入主题外观 Tab
+  if (!alreadyHasTheme) {
+    const themeIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a10 10 0 0 1 10 10c0 5.523-4.477 10-10 10S2 17.523 2 12a10 10 0 0 1 10-10z"></path><path d="m4.93 4.93 4.24 4.24"></path><path d="m14.83 9.17 4.24-4.24"></path><path d="m14.83 14.83 4.24 4.24"></path><path d="m4.93 19.07 4.24-4.24"></path></svg>`;
+    const themeTab = createSidebarTab("theme", "主题外观", themeIcon, () => {
+      showThemeModal();
+    });
+    targetContainer.appendChild(themeTab);
+  }
+
+  // 注入关于 Tab
+  if (!alreadyHasAbout) {
+    const aboutIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
+    const aboutTab = createSidebarTab("about", "关于", aboutIcon, () => {
       showAboutModal();
     });
+    targetContainer.appendChild(aboutTab);
   }
 }
 
@@ -968,6 +1239,7 @@ window.addEventListener("DOMContentLoaded", () => {
   enableSmoothWheelScrollFix();
   scanAndEnableRestartButtons();
   injectCustomTabsIntoSettings();
+  
   const observer = new MutationObserver(() => {
     scanAndEnableRestartButtons();
     injectCustomTabsIntoSettings();
@@ -979,7 +1251,3 @@ setInterval(() => {
   scanAndEnableRestartButtons();
   injectCustomTabsIntoSettings();
 }, 1000);
-
-
-
-

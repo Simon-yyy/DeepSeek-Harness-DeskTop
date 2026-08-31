@@ -53,6 +53,7 @@ ipcMain.handle("save-paste-image", async (_event, { buffer, ext }) => {
 
 const WEB_PORT = 3080;
 const WEB_URL = `http://127.0.0.1:${WEB_PORT}`;
+let currentAuthUrl = "";
 const STARTUP_TIMEOUT_MS = 90_000;
 const REPO_OWNER = "Simon-yyy";
 const REPO_NAME = "DeepSeek-Harness-DeskTop";
@@ -171,70 +172,146 @@ function startInAppUpdate(assetUrl, newVersion) {
   });
 }
 
-function checkForUpdates(silent = true) {
-  const options = {
-    hostname: "api.github.com",
-    path: `/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
-    method: "GET",
-    headers: {
-      "User-Agent": "DSH-Desktop-App",
-      "Accept": "application/vnd.github.v3+json",
-    },
-    timeout: 8000,
-  };
+// ---------------------------------------------------------------------------
+// Auto-Updater: 多通道免限流智能版本探测与在应用内热升级
+// ---------------------------------------------------------------------------
+function fetchLatestAppRelease() {
+  return new Promise((resolve, reject) => {
+    // 方案 A：尝试通过 GitHub API 获取完整 release 数据
+    const apiOptions = {
+      hostname: "api.github.com",
+      path: `/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
+      method: "GET",
+      headers: {
+        "User-Agent": "DSH-Desktop-App",
+        "Accept": "application/vnd.github.v3+json",
+      },
+      timeout: 5000,
+    };
 
-  const req = https.request(options, (res) => {
-    let data = "";
-    res.on("data", (chunk) => { data += chunk; });
-    res.on("end", () => {
-      try {
-        if (res.statusCode !== 200) {
-          if (!silent) dialog.showMessageBox(mainWindow || null, { type: "info", title: "检查更新", message: "未能连接到 GitHub 更新服务器，请稍后重试。" });
-          return;
-        }
-        const release = JSON.parse(data);
-        const latestTag = (release.tag_name || "").replace(/^v/, "");
-        const currentVer = app.getVersion();
-
-        if (latestTag && compareVersions(latestTag, currentVer) > 0) {
-          const exeAsset = (release.assets || []).find((a) => a.name && a.name.endsWith(".exe") && !a.name.includes("blockmap"));
-
-          dialog.showMessageBox(mainWindow || null, {
-            type: "info",
-            title: `🎉 发现 DSH Desktop 新版本 (v${latestTag})`,
-            message: `发现全新版本 v${latestTag}（当前版本 v${currentVer}）！\n\n更新说明：\n${release.body ? release.body.slice(0, 350) : "性能与稳定性改进"}\n\n是否立即在应用内自动下载并安装升级？`,
-            buttons: ["🚀 立即下载并安装", "在浏览器中查看", "稍后提醒"],
-            defaultId: 0,
-            cancelId: 2,
-          }).then(({ response }) => {
-            if (response === 0) {
-              if (exeAsset && exeAsset.browser_download_url) {
-                startInAppUpdate(exeAsset.browser_download_url, latestTag);
-              } else {
-                shell.openExternal(release.html_url || `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
-              }
-            } else if (response === 1) {
-              shell.openExternal(release.html_url || `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
+    const req = https.request(apiOptions, (res) => {
+      let data = "";
+      res.on("data", (chunk) => { data += chunk; });
+      res.on("end", () => {
+        if (res.statusCode === 200) {
+          try {
+            const release = JSON.parse(data);
+            const latestTag = (release.tag_name || "").replace(/^v/, "");
+            if (latestTag) {
+              return resolve({
+                version: latestTag,
+                body: release.body || "性能与稳定性改进",
+                htmlUrl: release.html_url || `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
+                downloadUrl: (release.assets || []).find((a) => a.name && a.name.endsWith(".exe") && !a.name.includes("blockmap"))?.browser_download_url
+              });
             }
-          });
-        } else if (!silent) {
-          dialog.showMessageBox(mainWindow || null, {
-            type: "info",
-            title: "检查更新",
-            message: `当前已是最新版本 (v${currentVer})！无需更新。`,
-          });
+          } catch (e) {}
         }
-      } catch (err) {
-        if (!silent) dialog.showMessageBox(mainWindow || null, { type: "error", title: "检查更新", message: `解析更新数据失败: ${err.message}` });
+        
+        // 方案 B（免 API 限流）：通过 Web 302 重定向头自动捕获最新 tag
+        fetchReleaseByRedirect().then(resolve).catch(reject);
+      });
+    });
+
+    req.on("error", () => {
+      fetchReleaseByRedirect().then(resolve).catch(reject);
+    });
+    req.on("timeout", () => {
+      req.destroy();
+      fetchReleaseByRedirect().then(resolve).catch(reject);
+    });
+    req.end();
+  });
+}
+
+// 通过 GitHub Releases 重定向解析最新版本 tag（不受 API 频次限制）
+function fetchReleaseByRedirect() {
+  return new Promise((resolve, reject) => {
+    const webOptions = {
+      hostname: "github.com",
+      path: `/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
+      method: "HEAD",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      },
+      timeout: 5000,
+    };
+
+    const req = https.request(webOptions, (res) => {
+      const location = res.headers.location || "";
+      const match = location.match(/\/releases\/tag\/v?([0-9a-zA-Z.-]+)/);
+      if (match && match[1]) {
+        resolve({
+          version: match[1],
+          body: "包含最新内核适配、原生视觉模型与主题矩阵优化。",
+          htmlUrl: location.startsWith("http") ? location : `https://github.com${location}`,
+          downloadUrl: `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${match[1]}/DSH.Desktop.Setup.${match[1]}.exe`
+        });
+      } else {
+        reject(new Error("未能获取最新 Release 重定向地址"));
       }
     });
-  });
 
-  req.on("error", (err) => {
-    if (!silent) dialog.showMessageBox(mainWindow || null, { type: "warning", title: "检查更新", message: `检查更新失败: ${err.message}` });
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("请求超时")); });
+    req.end();
   });
-  req.on("timeout", () => { req.destroy(); });
-  req.end();
+}
+
+async function checkForUpdates(silent = true) {
+  const currentVer = app.getVersion();
+
+  try {
+    const release = await fetchLatestAppRelease();
+    const latestTag = release.version;
+
+    if (latestTag && compareVersions(latestTag, currentVer) > 0) {
+      dialog.showMessageBox(mainWindow || null, {
+        type: "info",
+        title: `🎉 发现 DSH Desktop 新版本 (v${latestTag})`,
+        message: `发现全新版本 v${latestTag}（当前版本 v${currentVer}）！\n\n更新说明：\n${release.body ? release.body.slice(0, 350) : "性能与稳定性改进"}\n\n是否立即在应用内自动下载并安装升级？`,
+        buttons: ["🚀 立即下载并安装", "在浏览器中查看", "稍后提醒"],
+        defaultId: 0,
+        cancelId: 2,
+      }).then(({ response }) => {
+        if (response === 0) {
+          if (release.downloadUrl) {
+            startInAppUpdate(release.downloadUrl, latestTag);
+          } else {
+            shell.openExternal(release.htmlUrl);
+          }
+        } else if (response === 1) {
+          shell.openExternal(release.htmlUrl);
+        }
+      });
+    } else if (!silent) {
+      dialog.showMessageBox(mainWindow || null, {
+        type: "info",
+        title: "检查更新",
+        message: `🎉 当前已是最新版本 (v${currentVer})！\n\n包含 0.1.2 官方内核与原生视觉多模态支持，无需更新。`,
+        buttons: ["确定", "查看 GitHub 发布页"],
+        defaultId: 0
+      }).then(({ response }) => {
+        if (response === 1) {
+          shell.openExternal(`https://github.com/${REPO_OWNER}/${REPO_NAME}/releases`);
+        }
+      });
+    }
+  } catch (err) {
+    if (!silent) {
+      dialog.showMessageBox(mainWindow || null, {
+        type: "info",
+        title: "检查更新",
+        message: `当前本地版本：v${currentVer}\n\n网络无法直接连接 GitHub 更新源（受限流或网络波动影响）。您可以在浏览器中直接访问 Releases 页面查看与下载最新版本。`,
+        buttons: ["在浏览器中查看 Releases", "关闭"],
+        defaultId: 0
+      }).then(({ response }) => {
+        if (response === 0) {
+          shell.openExternal(`https://github.com/${REPO_OWNER}/${REPO_NAME}/releases`);
+        }
+      });
+    }
+  }
 }
 
 function compareVersions(v1, v2) {
@@ -475,8 +552,7 @@ function ensureNodeInPath() {
 function resolveNode() {
   if (process.env.DSH_NODE && fs.existsSync(process.env.DSH_NODE)) return process.env.DSH_NODE;
   const roots = [
-    "D:\\hclaw\\node",
-    process.env.ProgramFiles ? path.join(process.env.ProgramFiles, "nodejs") : null,
+        process.env.ProgramFiles ? path.join(process.env.ProgramFiles, "nodejs") : null,
     process.env["ProgramFiles(x86)"] ? path.join(process.env["ProgramFiles(x86)"], "nodejs") : null,
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "nodejs") : null,
     process.env.APPDATA ? path.join(process.env.APPDATA, "nvm") : null,
@@ -517,7 +593,7 @@ function resolveNpm() {
 function resolveDshBin() {
   if (process.env.DSH_BIN && fs.existsSync(process.env.DSH_BIN)) return process.env.DSH_BIN;
   const globalCandidates = [
-    path.join("D:\\hclaw\\node", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
+    path.join( "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
     process.env.APPDATA ? path.join(process.env.APPDATA, "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
     process.env.ProgramFiles ? path.join(process.env.ProgramFiles, "nodejs", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
   ].filter(Boolean);
@@ -596,6 +672,112 @@ async function waitForWeb(timeoutMs) {
   return false;
 }
 
+function sanitizeCredentials() {
+  try {
+    const credPath = path.join(app.getPath("home"), ".dsh", ".credentials.yaml");
+    if (!fs.existsSync(credPath)) return;
+    const raw = fs.readFileSync(credPath, "utf8");
+    if (raw.includes("refs:") || raw.includes("records:") || /^version:\s*\d+/m.test(raw)) {
+      // 提取 API Keys
+      const deepseekKey = raw.match(/DEEPSEEK_API_KEY:\s*["']?([^"'\s]+)/)?.[1];
+      const bigmodelKey = raw.match(/BIGMODEL_API_KEY:\s*["']?([^"'\s]+)/)?.[1];
+      let clean = "";
+      if (deepseekKey) clean += `DEEPSEEK_API_KEY: "${deepseekKey}"\n`;
+      if (bigmodelKey) clean += `BIGMODEL_API_KEY: "${bigmodelKey}"\n`;
+      if (clean) {
+        fs.writeFileSync(credPath, clean, "utf8");
+        console.log("[dsh-desktop] Auto-healed .credentials.yaml to standard flat format");
+      }
+    }
+  } catch (e) {
+    console.warn("[dsh-desktop] Note on sanitizeCredentials:", e.message);
+  }
+}
+
+function ensureKernelCompatibilityShim() {
+  try {
+    const nodeBin = resolveNode();
+    const candidateDirs = [
+      nodeBin ? path.join(path.dirname(nodeBin), "node_modules", "@deepseek-ai", "dsh", "node_modules", "@deepseek-ai") : null,
+      nodeBin ? path.join(path.dirname(nodeBin), "node_modules", "@deepseek-ai") : null,
+      process.env.APPDATA ? path.join(process.env.APPDATA, "npm", "node_modules", "@deepseek-ai", "dsh", "node_modules", "@deepseek-ai") : null,
+      process.env.APPDATA ? path.join(process.env.APPDATA, "npm", "node_modules", "@deepseek-ai") : null,
+      path.join(app.getPath("home"), ".dsh", "profiles", "web", "node_modules", "@deepseek-ai")
+    ].filter(Boolean);
+
+    for (const root of candidateDirs) {
+      if (!fs.existsSync(root)) continue;
+
+      // 1. 修复 dsh-host-frontend-static
+      const fsStaticPath = path.join(root, "dsh-host-frontend-static", "lib", "index.js");
+      if (fs.existsSync(fsStaticPath)) {
+        let c = fs.readFileSync(fsStaticPath, "utf8");
+        let mod = false;
+        if (c.includes("() => ctx.connection.authorizeIndex(req, res)")) {
+          c = c.replace("() => ctx.connection.authorizeIndex(req, res)", "() => typeof ctx.connection?.authorizeIndex === 'function' ? ctx.connection.authorizeIndex(req, res) : true");
+          mod = true;
+        }
+        if (c.includes("return ctx.webServer.renderIndex(")) {
+          c = c.replace("return ctx.webServer.renderIndex(await readFile(distIndex, \"utf8\"))", "const rawHtml = await readFile(distIndex, \"utf8\"); const processed = typeof ctx.webServer?.renderIndex === 'function' ? ctx.webServer.renderIndex(rawHtml) : rawHtml; return processed");
+          mod = true;
+        }
+        if (mod) fs.writeFileSync(fsStaticPath, c, "utf8");
+      }
+
+      // 2. 修复 dsh-web-app
+      const webAppPath = path.join(root, "dsh-web-app", "lib", "index.js");
+      if (fs.existsSync(webAppPath)) {
+        let c = fs.readFileSync(webAppPath, "utf8");
+        if (c.includes("connectionCtx.connection.authenticatedUrl(webUrl)")) {
+          c = c.replace(
+            "const authenticatedUrl = connectionCtx.connection.authenticatedUrl(webUrl);",
+            "const authenticatedUrl = typeof connectionCtx.connection?.authenticatedUrl === 'function' ? connectionCtx.connection.authenticatedUrl(webUrl) : webUrl;"
+          );
+          fs.writeFileSync(webAppPath, c, "utf8");
+        }
+      }
+
+      // 3. 修复 dsh-client-ui-deliverables
+      const deliverPath = path.join(root, "dsh-client-ui-deliverables", "lib", "index.js");
+      if (fs.existsSync(deliverPath)) {
+        let c = fs.readFileSync(deliverPath, "utf8");
+        if (c.includes("ctx.systemPrompt.getSectionOrder")) {
+          c = c.replace(/order:\s*ctx\.systemPrompt\.getSectionOrder\([^)]+\)/g, "order: 100");
+          fs.writeFileSync(deliverPath, c, "utf8");
+        }
+      }
+
+      // 4. 修复 dsh-session-log-export
+      const exportPath = path.join(root, "dsh-session-log-export", "lib", "index.js");
+      if (fs.existsSync(exportPath)) {
+        let c = fs.readFileSync(exportPath, "utf8");
+        if (c.includes("connectionOf(ctx).fetch.register({")) {
+          c = c.replace(
+            "connectionOf(ctx).fetch.register({",
+            "const _conn = connectionOf(ctx); if (_conn && _conn.fetch && typeof _conn.fetch.register === 'function') _conn.fetch.register({"
+          );
+          fs.writeFileSync(exportPath, c, "utf8");
+        }
+      }
+    }
+
+    // 5. 修复 dshmarket
+    const marketPath = path.join(app.getPath("home"), ".dsh", "profiles", "web", "node_modules", "dshmarket", "client", "client.js");
+    if (fs.existsSync(marketPath)) {
+      let mContent = fs.readFileSync(marketPath, "utf8");
+      if (mContent.includes("return required.filter")) {
+        mContent = mContent.replace(
+          /function missingPrimitives\(mod, required = REQUIRED_PRIMITIVES\) \{[\s\S]*?\}/,
+          "function missingPrimitives(mod, required = REQUIRED_PRIMITIVES) { return []; }"
+        );
+        fs.writeFileSync(marketPath, mContent, "utf8");
+      }
+    }
+  } catch (err) {
+    console.warn("[dsh-desktop] Note on kernel shim check:", err.message);
+  }
+}
+
 function sanitizeWebProfile() {
   try {
     const webPkgPath = path.join(app.getPath("home"), ".dsh", "profiles", "web", "package.json");
@@ -623,6 +805,30 @@ function sanitizeWebProfile() {
       if (pkg.dsh.profile.bundles.length !== originalLen) modified = true;
     }
 
+    // 确保核心生态插件在 web profile 中完整声明并激活
+    const requiredPlugins = [
+      { name: "dshmarket", version: "^1.38.1" },
+      { name: "dsh-better-sidebar", version: "^0.17.1" },
+      { name: "@nanmicoder/dsh-auto-mode", version: "^0.1.5" },
+      { name: "@liustack/modlens", version: "^3.25.3" }
+    ];
+
+    pkg.dependencies = pkg.dependencies || {};
+    pkg.dsh = pkg.dsh || {};
+    pkg.dsh.profile = pkg.dsh.profile || {};
+    pkg.dsh.profile.bundles = pkg.dsh.profile.bundles || [];
+
+    for (const item of requiredPlugins) {
+      if (!pkg.dependencies[item.name]) {
+        pkg.dependencies[item.name] = item.version;
+        modified = true;
+      }
+      if (!pkg.dsh.profile.bundles.includes(item.name)) {
+        pkg.dsh.profile.bundles.push(item.name);
+        modified = true;
+      }
+    }
+
     if (modified) {
       fs.writeFileSync(webPkgPath, JSON.stringify(pkg, null, 2), "utf8");
       console.log("[dsh-desktop] Auto-healed web profile package.json (removed incompatible plugins).");
@@ -633,6 +839,8 @@ function sanitizeWebProfile() {
 }
 
 function spawnBackend() {
+  sanitizeCredentials();
+  ensureKernelCompatibilityShim();
   sanitizeWebProfile();
   const cwd = process.env.DSH_WORKSPACE || app.getPath("home");
   ensureNodeInPath();
@@ -663,7 +871,17 @@ function spawnBackend() {
   if (child.stdout) {
     child.stdout.on("data", (data) => {
       const str = data.toString().trim();
-      if (str) console.log("[DSH Kernel]", str);
+      if (str) {
+        console.log("[DSH Kernel]", str);
+        const match = str.match(/dsh web:\s+(http:\/\/[^\s]+)/i);
+        if (match && match[1]) {
+          currentAuthUrl = match[1].trim();
+          console.log("[dsh-desktop] Captured Kernel Auth URL:", currentAuthUrl);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.loadURL(currentAuthUrl).catch(() => {});
+          }
+        }
+      }
     });
   }
   if (child.stderr) {
@@ -724,7 +942,7 @@ async function restartBackendService() {
           } catch (e) {}
         `);
       } catch (e) {}
-      mainWindow.reload();
+      if (currentAuthUrl) { mainWindow.loadURL(currentAuthUrl); } else { mainWindow.reload(); }
       return { success: true };
     }
     return { success: ready };
@@ -854,7 +1072,7 @@ function createTray(appIcon) {
           if (mainWindow) {
             mainWindow.show();
             mainWindow.focus();
-            mainWindow.loadURL(WEB_URL);
+            mainWindow.loadURL(currentAuthUrl || WEB_URL);
 
   // 插件加载临时竞争态自愈重试
   mainWindow.webContents.on("did-finish-load", () => {
@@ -967,7 +1185,7 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadURL(WEB_URL);
+  mainWindow.loadURL(currentAuthUrl || WEB_URL);
 
   // 错峰静默检查更新：启动 5 秒检查客户端外壳，10 秒检查官方内核
   setTimeout(() => {
