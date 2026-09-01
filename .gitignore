@@ -5,13 +5,18 @@ node_modules/
 release/
 dist/
 
-# Build cache
+# Build cache & Agent workdirs
 .npm-cache/
 .builder-cache/
+.agents/
+.vscode/
 
-# Logs & Temporary files
+# Logs & Temporary debug scripts
 *.log
 dsh-desktop-test*.txt
+hook-status.js
+ocr_text.md
+agent-global-rules*.md
 .DS_Store
 Thumbs.db
 
