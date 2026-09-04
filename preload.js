@@ -132,7 +132,7 @@ window.addEventListener(
 
     // 2. 如果当前在官方输入框内，优先完全透传给官方原生视觉多模态引擎！
     if (isInsideInput) {
-      console.log("[dsh-desktop] Native vision modal detected, passing imageFile to official web frontend handler");
+      console.info("[dsh-desktop] Native vision modal detected, passing imageFile to official web frontend handler");
       // 不执行 event.preventDefault() 与 stopImmediatePropagation()，让官方 React 前端原生接收 File 生成附件缩略图
       return;
     }
@@ -272,363 +272,258 @@ function scanAndEnableRestartButtons() {
 // 4. escook Light Soft (柔和浅色)
 // ---------------------------------------------------------------------------
 // =========================================================================
-// 8 款全新精心调配的高级设计感主题矩阵 (Aesthetic Theme Palettes)
+// 4 款全新精心调配的高级设计感主题矩阵 (Aesthetic Theme Palettes)
 // =========================================================================
 const ESCOOK_THEMES = {
   "dark": {
-    name: "escook Dark (经典暗黑 · 日落金橙)",
-    desc: "沉浸深邃蓝黑底色搭配极光日落金橙，现代极客硬朗质感",
+    name: "escook Dark (经典暗黑 · 标志暖阳橙)",
+    desc: "VS Code 彬哥经典暖调极客深灰搭配标志暖阳橙，正统耐看长效护眼",
     type: "dark",
-    colorPreview: "#FF8400",
-    bgPreview: "#14171F",
+    colorPreview: "#ef820c",
+    bgPreview: "#252526",
     css: `
       :root, html, body, body[data-ds-dark-theme], [data-theme="escook-dark"] {
-        --dsw-alias-bg-base: #14171F !important;
-        --dsw-alias-bg-layer-1: #0E1017 !important;
-        --dsw-alias-bg-layer-2: #1B1F2A !important;
-        --dsw-alias-bg-mask-1: rgba(10, 12, 18, 0.75) !important;
-        --dsw-specific-sidebar-fill: #0E1017 !important;
-        --dsw-specific-sidebar-nav-item-hover: rgba(255, 132, 0, 0.1) !important;
-        --dsw-specific-sidebar-nav-item-active: rgba(255, 132, 0, 0.2) !important;
-        --dsw-specific-sidebar-nav-item-active-accent: #FF8400 !important;
-        --dsw-specific-input-major: #1B1F2A !important;
-        --dsw-specific-bubble: #1B1F2A !important;
-        --dsw-specific-menu: #161922 !important;
-        --dsw-hovercard-bg: #161922 !important;
-        --dsw-alias-tooltip-bg: #222736 !important;
-        --dsw-alias-button-elevated-fill: #1B1F2A !important;
-        --dsw-alias-button-floating-hover: #262C3D !important;
-        --dsw-alias-brand-primary: #FF8400 !important;
-        --dsw-alias-button-primary-fill: #FF8400 !important;
-        --dsw-alias-button-primary-hover: #FFA033 !important;
-        --dsw-alias-label-primary-foreground: #000000 !important;
-        --dsw-alias-label-primary: #F4F6FB !important;
-        --dsw-alias-label-secondary: #9CA3AF !important;
-        --dsw-alias-label-tertiary: #6B7280 !important;
-        --dsw-alias-label-dimmed: #4B5563 !important;
-        --dsw-alias-label-caption: #6B7280 !important;
-        --dsw-alias-interactive-bg-hover: rgba(255, 132, 0, 0.1) !important;
-        --dsw-alias-interactive-bg-active: rgba(255, 132, 0, 0.2) !important;
-        --dsw-alias-border-l1: #2A3042 !important;
-        --dsw-alias-border-l2: #212635 !important;
-        --dsw-alias-border-l3: #384058 !important;
-        --dsw-alias-border-l4: #4B5563 !important;
-        --dsw-alias-markdown-code-block: #0C0E14 !important;
-        --dsw-alias-markdown-code-block-banner: #14171F !important;
-        --dsw-alias-scrollbar-bg-l2: #2A3042 !important;
-        --dsw-alias-scrollbar-hover-l2: #FF8400 !important;
+        --dsw-alias-bg-base: #252526 !important;
+        --dsw-alias-bg-layer-1: #202021 !important;
+        --dsw-alias-bg-layer-2: #29292c !important;
+        --dsw-alias-bg-layer-3: #2d2d30 !important;
+        --dsw-alias-bg-module-platform: #2d2d30 !important;
+        --dsw-alias-bg-multi-select: #2d2d30 !important;
+        --dsw-alias-bg-overlay: #333333 !important;
+        --dsw-specific-selector: #2d2d30 !important;
+        --dsw-alias-bg-mask-1: rgba(18, 18, 20, 0.75) !important;
+        --dsw-specific-sidebar-fill: #202021 !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(239, 130, 12, 0.1) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(239, 130, 12, 0.2) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #ef820c !important;
+        --dsw-specific-input-major: #29292c !important;
+        --dsw-specific-bubble: #29292c !important;
+        --dsw-specific-menu: #202021 !important;
+        --dsw-hovercard-bg: #29292c !important;
+        --dsw-alias-tooltip-bg: #1c1c1d !important;
+        --dsw-alias-button-elevated-fill: #2f2f33 !important;
+        --dsw-alias-button-floating-hover: #38383c !important;
+        --dsw-alias-brand-primary: #ef820c !important;
+        --dsw-alias-button-primary-fill: #ef820c !important;
+        --dsw-alias-button-primary-hover: #ff9940 !important;
+        --dsw-alias-label-primary-foreground: #ffffff !important;
+        --dsw-alias-label-primary: #fafafa !important;
+        --dsw-alias-label-secondary: #cccccc !important;
+        --dsw-alias-label-tertiary: #888888 !important;
+        --dsw-alias-label-dimmed: #555555 !important;
+        --dsw-alias-label-caption: #888888 !important;
+        --dsw-alias-interactive-bg-hover: rgba(239, 130, 12, 0.1) !important;
+        --dsw-alias-interactive-bg-active: rgba(239, 130, 12, 0.2) !important;
+        --dsw-alias-border-l1: #333333 !important;
+        --dsw-alias-border-l2: #2a2a2a !important;
+        --dsw-alias-border-l3: #3e3e3e !important;
+        --dsw-alias-border-l4: #555555 !important;
+        --dsw-alias-markdown-code-block: #1c1c1d !important;
+        --dsw-alias-markdown-code-block-banner: #252526 !important;
+        --dsw-alias-scrollbar-bg-l2: #333333 !important;
+        --dsw-alias-scrollbar-hover-l2: #ef820c !important;
       }
-      body, body[data-ds-dark-theme] { background-color: #14171F !important; color: #F4F6FB !important; }
+      body, body[data-ds-dark-theme] { background-color: #252526 !important; color: #fafafa !important; }
       pre, code, [class*="codeBlock"] {
-        background-color: #0C0E14 !important;
-        color: #F4F6FB !important;
-        border-color: #2A3042 !important;
+        background-color: #1c1c1d !important;
+        color: #fafafa !important;
+        border-color: #333333 !important;
+      }
+      [class*="selector"], [class*="themeCube"] {
+        color: #fafafa !important;
+        background-color: #2d2d30 !important;
+      }
+      [class*="selected"], [class*="themeCube"]:hover {
+        border-color: #ef820c !important;
       }
     `
   },
   "dark-soft": {
-    name: "escook Dark Soft (柔和暗黑 · 琥珀流金)",
-    desc: "温润哑光深青夜幕底色搭配柔和琥珀流金，长效护眼防疲劳",
+    name: "escook Dark Soft (柔和暗黑 · 柔光奶杏黄)",
+    desc: "Ayu 经典深海蓝灰底色搭配温润奶杏黄，细腻柔和长效防疲劳",
     type: "dark",
-    colorPreview: "#F6C177",
-    bgPreview: "#1A1E29",
+    colorPreview: "#ffcc66",
+    bgPreview: "#1f2430",
     css: `
       :root, html, body, body[data-ds-dark-theme], [data-theme="escook-dark-soft"] {
-        --dsw-alias-bg-base: #1A1E29 !important;
-        --dsw-alias-bg-layer-1: #141720 !important;
-        --dsw-alias-bg-layer-2: #212735 !important;
-        --dsw-alias-bg-mask-1: rgba(14, 16, 24, 0.7) !important;
-        --dsw-specific-sidebar-fill: #141720 !important;
-        --dsw-specific-sidebar-nav-item-hover: rgba(246, 193, 119, 0.1) !important;
-        --dsw-specific-sidebar-nav-item-active: rgba(246, 193, 119, 0.18) !important;
-        --dsw-specific-sidebar-nav-item-active-accent: #F6C177 !important;
-        --dsw-specific-input-major: #212735 !important;
-        --dsw-specific-bubble: #212735 !important;
-        --dsw-specific-menu: #1B202B !important;
-        --dsw-hovercard-bg: #1B202B !important;
-        --dsw-alias-tooltip-bg: #293042 !important;
-        --dsw-alias-button-elevated-fill: #212735 !important;
-        --dsw-alias-button-floating-hover: #2B3346 !important;
-        --dsw-alias-brand-primary: #F6C177 !important;
-        --dsw-alias-button-primary-fill: #F6C177 !important;
-        --dsw-alias-button-primary-hover: #FAD49E !important;
-        --dsw-alias-label-primary-foreground: #1A1E29 !important;
-        --dsw-alias-label-primary: #D5DAE5 !important;
-        --dsw-alias-label-secondary: #8C95A6 !important;
-        --dsw-alias-label-tertiary: #677082 !important;
-        --dsw-alias-label-dimmed: #4E5666 !important;
-        --dsw-alias-label-caption: #677082 !important;
-        --dsw-alias-interactive-bg-hover: rgba(246, 193, 119, 0.1) !important;
-        --dsw-alias-interactive-bg-active: rgba(246, 193, 119, 0.18) !important;
-        --dsw-alias-border-l1: #2B3242 !important;
-        --dsw-alias-border-l2: #232938 !important;
-        --dsw-alias-border-l3: #3B4459 !important;
-        --dsw-alias-border-l4: #4E5666 !important;
-        --dsw-alias-markdown-code-block: #12151D !important;
-        --dsw-alias-markdown-code-block-banner: #181C26 !important;
-        --dsw-alias-scrollbar-bg-l2: #2B3242 !important;
-        --dsw-alias-scrollbar-hover-l2: #F6C177 !important;
+        --dsw-alias-bg-base: #1f2430 !important;
+        --dsw-alias-bg-layer-1: #191e28 !important;
+        --dsw-alias-bg-layer-2: #232834 !important;
+        --dsw-alias-bg-layer-3: #262c3b !important;
+        --dsw-alias-bg-module-platform: #262c3b !important;
+        --dsw-alias-bg-multi-select: #262c3b !important;
+        --dsw-alias-bg-overlay: #333a4c !important;
+        --dsw-specific-selector: #262c3b !important;
+        --dsw-alias-bg-mask-1: rgba(16, 20, 28, 0.7) !important;
+        --dsw-specific-sidebar-fill: #191e28 !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(255, 204, 102, 0.1) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(255, 204, 102, 0.18) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #ffcc66 !important;
+        --dsw-specific-input-major: #232834 !important;
+        --dsw-specific-bubble: #232834 !important;
+        --dsw-specific-menu: #191e28 !important;
+        --dsw-hovercard-bg: #191e28 !important;
+        --dsw-alias-tooltip-bg: #171b24 !important;
+        --dsw-alias-button-elevated-fill: #2b3140 !important;
+        --dsw-alias-button-floating-hover: #333a4c !important;
+        --dsw-alias-brand-primary: #ffcc66 !important;
+        --dsw-alias-button-primary-fill: #ffcc66 !important;
+        --dsw-alias-button-primary-hover: #ffd580 !important;
+        --dsw-alias-label-primary-foreground: #1f2430 !important;
+        --dsw-alias-label-primary: #cbccc6 !important;
+        --dsw-alias-label-secondary: #969aa4 !important;
+        --dsw-alias-label-tertiary: #707a8c !important;
+        --dsw-alias-label-dimmed: #515764 !important;
+        --dsw-alias-label-caption: #707a8c !important;
+        --dsw-alias-interactive-bg-hover: rgba(255, 204, 102, 0.1) !important;
+        --dsw-alias-interactive-bg-active: rgba(255, 204, 102, 0.18) !important;
+        --dsw-alias-border-l1: #373e4c !important;
+        --dsw-alias-border-l2: #2d3340 !important;
+        --dsw-alias-border-l3: #444c5e !important;
+        --dsw-alias-border-l4: #515764 !important;
+        --dsw-alias-markdown-code-block: #171b24 !important;
+        --dsw-alias-markdown-code-block-banner: #1f2430 !important;
+        --dsw-alias-scrollbar-bg-l2: #373e4c !important;
+        --dsw-alias-scrollbar-hover-l2: #ffcc66 !important;
       }
-      body, body[data-ds-dark-theme] { background-color: #1A1E29 !important; color: #D5DAE5 !important; }
+      body, body[data-ds-dark-theme] { background-color: #1f2430 !important; color: #cbccc6 !important; }
       pre, code, [class*="codeBlock"] {
-        background-color: #12151D !important;
-        color: #D5DAE5 !important;
-        border-color: #2B3242 !important;
+        background-color: #171b24 !important;
+        color: #cbccc6 !important;
+        border-color: #373e4c !important;
+      }
+      [class*="selector"], [class*="themeCube"] {
+        color: #cbccc6 !important;
+        background-color: #262c3b !important;
+      }
+      [class*="selected"], [class*="themeCube"]:hover {
+        border-color: #ffcc66 !important;
       }
     `
   },
   "light": {
-    name: "escook Light (经典紫韵 · 皇家罗兰)",
-    desc: "法式法兰绒暖米白搭配典雅皇家罗兰紫，极富书卷杂志质感",
+    name: "escook Light (经典浅色 · 典雅紫罗兰)",
+    desc: "Solarized 经典护眼暖米白搭配典雅紫罗兰与青墨文本，温润纸质书卷感",
     type: "light",
-    colorPreview: "#7C3AED",
-    bgPreview: "#FAF8F5",
+    colorPreview: "#705697",
+    bgPreview: "#fdf6e3",
     css: `
       :root, html, body, body[data-ds-dark-theme], [data-theme="escook-light"] {
-        --dsw-alias-bg-base: #FAF8F5 !important;
-        --dsw-alias-bg-layer-1: #F3EFEA !important;
-        --dsw-alias-bg-layer-2: #FFFFFF !important;
-        --dsw-alias-bg-mask-1: rgba(60, 50, 70, 0.3) !important;
-        --dsw-specific-sidebar-fill: #F3EFEA !important;
-        --dsw-specific-sidebar-nav-item-hover: rgba(124, 58, 237, 0.08) !important;
-        --dsw-specific-sidebar-nav-item-active: rgba(124, 58, 237, 0.16) !important;
-        --dsw-specific-sidebar-nav-item-active-accent: #7C3AED !important;
-        --dsw-specific-input-major: #FFFFFF !important;
-        --dsw-specific-bubble: #FFFFFF !important;
-        --dsw-specific-menu: #FFFFFF !important;
-        --dsw-hovercard-bg: #FFFFFF !important;
-        --dsw-alias-tooltip-bg: #1E1B24 !important;
-        --dsw-alias-button-elevated-fill: #FFFFFF !important;
-        --dsw-alias-button-floating-hover: #F3EFEA !important;
-        --dsw-alias-brand-primary: #7C3AED !important;
-        --dsw-alias-button-primary-fill: #7C3AED !important;
-        --dsw-alias-button-primary-hover: #8B5CF6 !important;
-        --dsw-alias-label-primary-foreground: #FFFFFF !important;
-        --dsw-alias-label-primary: #1E1B24 !important;
-        --dsw-alias-label-secondary: #524E5B !important;
-        --dsw-alias-label-tertiary: #716C7B !important;
-        --dsw-alias-label-dimmed: #9A94A4 !important;
-        --dsw-alias-label-caption: #716C7B !important;
-        --dsw-alias-interactive-bg-hover: rgba(124, 58, 237, 0.08) !important;
-        --dsw-alias-interactive-bg-active: rgba(124, 58, 237, 0.15) !important;
-        --dsw-alias-border-l1: #E6E0D8 !important;
-        --dsw-alias-border-l2: #F0EAE2 !important;
-        --dsw-alias-border-l3: #DDD6CE !important;
-        --dsw-alias-border-l4: #9A94A4 !important;
-        --dsw-alias-markdown-code-block: #F4EFE9 !important;
-        --dsw-alias-markdown-code-block-banner: #EAE3DA !important;
-        --dsw-alias-scrollbar-bg-l2: #E6E0D8 !important;
-        --dsw-alias-scrollbar-hover-l2: #7C3AED !important;
+        --dsw-alias-bg-base: #fdf6e3 !important;
+        --dsw-alias-bg-layer-1: #f8f0d8 !important;
+        --dsw-alias-bg-layer-2: #ffffff !important;
+        --dsw-alias-bg-layer-3: #eee8d5 !important;
+        --dsw-alias-bg-module-platform: #eee8d5 !important;
+        --dsw-alias-bg-multi-select: #eee8d5 !important;
+        --dsw-alias-bg-overlay: #e3dac6 !important;
+        --dsw-specific-selector: #eee8d5 !important;
+        --dsw-alias-bg-mask-1: rgba(50, 40, 60, 0.25) !important;
+        --dsw-specific-sidebar-fill: #f8f0d8 !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(112, 86, 151, 0.08) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(112, 86, 151, 0.16) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #705697 !important;
+        --dsw-specific-input-major: #ffffff !important;
+        --dsw-specific-bubble: #ffffff !important;
+        --dsw-specific-menu: #ffffff !important;
+        --dsw-hovercard-bg: #ffffff !important;
+        --dsw-alias-tooltip-bg: #2b2638 !important;
+        --dsw-alias-button-elevated-fill: #f4ecce !important;
+        --dsw-alias-button-floating-hover: #ece2c4 !important;
+        --dsw-alias-brand-primary: #705697 !important;
+        --dsw-alias-button-primary-fill: #705697 !important;
+        --dsw-alias-button-primary-hover: #876cad !important;
+        --dsw-alias-label-primary-foreground: #ffffff !important;
+        --dsw-alias-label-primary: #586e75 !important;
+        --dsw-alias-label-secondary: #657b83 !important;
+        --dsw-alias-label-tertiary: #93a1a1 !important;
+        --dsw-alias-label-dimmed: #b58900 !important;
+        --dsw-alias-label-caption: #93a1a1 !important;
+        --dsw-alias-interactive-bg-hover: rgba(112, 86, 151, 0.08) !important;
+        --dsw-alias-interactive-bg-active: rgba(112, 86, 151, 0.15) !important;
+        --dsw-alias-border-l1: #e3dac6 !important;
+        --dsw-alias-border-l2: #ece3cf !important;
+        --dsw-alias-border-l3: #d8ceb8 !important;
+        --dsw-alias-border-l4: #b58900 !important;
+        --dsw-alias-markdown-code-block: #f5eed8 !important;
+        --dsw-alias-markdown-code-block-banner: #ebe4cc !important;
+        --dsw-alias-scrollbar-bg-l2: #e3dac6 !important;
+        --dsw-alias-scrollbar-hover-l2: #705697 !important;
       }
-      body, body[data-ds-dark-theme] { background-color: #FAF8F5 !important; color: #1E1B24 !important; }
+      body, body[data-ds-dark-theme] { background-color: #fdf6e3 !important; color: #586e75 !important; }
       pre, code, [class*="codeBlock"] {
-        background-color: #F4EFE9 !important;
-        color: #1E1B24 !important;
-        border-color: #E6E0D8 !important;
+        background-color: #f5eed8 !important;
+        color: #586e75 !important;
+        border-color: #e3dac6 !important;
+      }
+      [class*="selector"], [class*="themeCube"] {
+        color: #586e75 !important;
+        background-color: #eee8d5 !important;
+      }
+      [class*="selected"], [class*="themeCube"]:hover {
+        border-color: #705697 !important;
       }
     `
   },
   "light-soft": {
-    name: "escook Light Soft (柔和浅色 · 蜜柑亮橙)",
-    desc: "清透微晨纯白搭配活力蜜柑亮橙，清爽明亮不刺眼",
+    name: "escook Light Soft (柔和浅色 · 活力柔和橙)",
+    desc: "现代极简清透浅灰搭配柔和活力橙，明亮清爽不刺眼",
     type: "light",
-    colorPreview: "#FF6B00",
-    bgPreview: "#F8FAFC",
+    colorPreview: "#ff9940",
+    bgPreview: "#fafafa",
     css: `
       :root, html, body, body[data-ds-dark-theme], [data-theme="escook-light-soft"] {
-        --dsw-alias-bg-base: #F8FAFC !important;
-        --dsw-alias-bg-layer-1: #F1F5F9 !important;
-        --dsw-alias-bg-layer-2: #FFFFFF !important;
-        --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.25) !important;
-        --dsw-specific-sidebar-fill: #F1F5F9 !important;
-        --dsw-specific-sidebar-nav-item-hover: rgba(255, 107, 0, 0.08) !important;
-        --dsw-specific-sidebar-nav-item-active: rgba(255, 107, 0, 0.16) !important;
-        --dsw-specific-sidebar-nav-item-active-accent: #FF6B00 !important;
-        --dsw-specific-input-major: #FFFFFF !important;
-        --dsw-specific-bubble: #FFFFFF !important;
-        --dsw-specific-menu: #FFFFFF !important;
-        --dsw-hovercard-bg: #FFFFFF !important;
-        --dsw-alias-tooltip-bg: #0F172A !important;
-        --dsw-alias-button-elevated-fill: #FFFFFF !important;
-        --dsw-alias-button-floating-hover: #F1F5F9 !important;
-        --dsw-alias-brand-primary: #FF6B00 !important;
-        --dsw-alias-button-primary-fill: #FF6B00 !important;
-        --dsw-alias-button-primary-hover: #FF8533 !important;
-        --dsw-alias-label-primary-foreground: #FFFFFF !important;
-        --dsw-alias-label-primary: #0F172A !important;
-        --dsw-alias-label-secondary: #475569 !important;
-        --dsw-alias-label-tertiary: #64748B !important;
-        --dsw-alias-label-dimmed: #94A3B8 !important;
-        --dsw-alias-label-caption: #64748B !important;
-        --dsw-alias-interactive-bg-hover: rgba(255, 107, 0, 0.08) !important;
-        --dsw-alias-interactive-bg-active: rgba(255, 107, 0, 0.15) !important;
-        --dsw-alias-border-l1: #E2E8F0 !important;
-        --dsw-alias-border-l2: #F1F5F9 !important;
-        --dsw-alias-border-l3: #CBD5E1 !important;
-        --dsw-alias-border-l4: #94A3B8 !important;
-        --dsw-alias-markdown-code-block: #F1F5F9 !important;
-        --dsw-alias-markdown-code-block-banner: #E2E8F0 !important;
-        --dsw-alias-scrollbar-bg-l2: #E2E8F0 !important;
-        --dsw-alias-scrollbar-hover-l2: #FF6B00 !important;
+        --dsw-alias-bg-base: #fafafa !important;
+        --dsw-alias-bg-layer-1: #f2f2f2 !important;
+        --dsw-alias-bg-layer-2: #ffffff !important;
+        --dsw-alias-bg-layer-3: #e8e8e8 !important;
+        --dsw-alias-bg-module-platform: #e8e8e8 !important;
+        --dsw-alias-bg-multi-select: #e8e8e8 !important;
+        --dsw-alias-bg-overlay: #dcdcdc !important;
+        --dsw-specific-selector: #e8e8e8 !important;
+        --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.2) !important;
+        --dsw-specific-sidebar-fill: #f2f2f2 !important;
+        --dsw-specific-sidebar-nav-item-hover: rgba(255, 153, 64, 0.08) !important;
+        --dsw-specific-sidebar-nav-item-active: rgba(255, 153, 64, 0.16) !important;
+        --dsw-specific-sidebar-nav-item-active-accent: #ff9940 !important;
+        --dsw-specific-input-major: #ffffff !important;
+        --dsw-specific-bubble: #ffffff !important;
+        --dsw-specific-menu: #ffffff !important;
+        --dsw-hovercard-bg: #ffffff !important;
+        --dsw-alias-tooltip-bg: #2d3748 !important;
+        --dsw-alias-button-elevated-fill: #eaeaea !important;
+        --dsw-alias-button-floating-hover: #e0e0e0 !important;
+        --dsw-alias-brand-primary: #ff9940 !important;
+        --dsw-alias-button-primary-fill: #ff9940 !important;
+        --dsw-alias-button-primary-hover: #f58220 !important;
+        --dsw-alias-label-primary-foreground: #ffffff !important;
+        --dsw-alias-label-primary: #2d3748 !important;
+        --dsw-alias-label-secondary: #4a5568 !important;
+        --dsw-alias-label-tertiary: #718096 !important;
+        --dsw-alias-label-dimmed: #a0aec0 !important;
+        --dsw-alias-label-caption: #718096 !important;
+        --dsw-alias-interactive-bg-hover: rgba(255, 153, 64, 0.08) !important;
+        --dsw-alias-interactive-bg-active: rgba(255, 153, 64, 0.15) !important;
+        --dsw-alias-border-l1: #dcdcdc !important;
+        --dsw-alias-border-l2: #e8e8e8 !important;
+        --dsw-alias-border-l3: #d0d0d0 !important;
+        --dsw-alias-border-l4: #a0aec0 !important;
+        --dsw-alias-markdown-code-block: #f0f2f5 !important;
+        --dsw-alias-markdown-code-block-banner: #e6e9ee !important;
+        --dsw-alias-scrollbar-bg-l2: #dcdcdc !important;
+        --dsw-alias-scrollbar-hover-l2: #ff9940 !important;
       }
-      body, body[data-ds-dark-theme] { background-color: #F8FAFC !important; color: #0F172A !important; }
+      body, body[data-ds-dark-theme] { background-color: #fafafa !important; color: #2d3748 !important; }
       pre, code, [class*="codeBlock"] {
-        background-color: #F1F5F9 !important;
-        color: #0F172A !important;
-        border-color: #E2E8F0 !important;
+        background-color: #f0f2f5 !important;
+        color: #2d3748 !important;
+        border-color: #dcdcdc !important;
       }
-    `
-  },
-  "deepseek-dark": {
-    name: "DeepSeek 极客深邃蓝",
-    desc: "纯正星空蓝黑底色搭配科技动感电光蓝，现代极客首选",
-    type: "dark",
-    colorPreview: "#3B82F6",
-    bgPreview: "#0B0F17",
-    css: `
-      :root, html, body, body[data-ds-dark-theme] {
-        --dsw-alias-bg-base: #0B0F17 !important;
-        --dsw-alias-bg-layer-1: #111827 !important;
-        --dsw-alias-bg-layer-2: #161F30 !important;
-        --dsw-alias-bg-mask-1: rgba(5, 8, 15, 0.75) !important;
-        --dsw-specific-sidebar-fill: #0E1420 !important;
-        --dsw-specific-sidebar-nav-item-hover: rgba(59, 130, 246, 0.1) !important;
-        --dsw-specific-sidebar-nav-item-active: rgba(59, 130, 246, 0.18) !important;
-        --dsw-specific-sidebar-nav-item-active-accent: #3B82F6 !important;
-        --dsw-specific-input-major: #161F30 !important;
-        --dsw-specific-bubble: #161F30 !important;
-        --dsw-specific-menu: #131A29 !important;
-        --dsw-hovercard-bg: #131A29 !important;
-        --dsw-alias-tooltip-bg: #1E293B !important;
-        --dsw-alias-button-elevated-fill: #1E293B !important;
-        --dsw-alias-button-floating-hover: #26354D !important;
-        --dsw-alias-brand-primary: #3B82F6 !important;
-        --dsw-alias-button-primary-fill: #2563EB !important;
-        --dsw-alias-button-primary-hover: #3B82F6 !important;
-        --dsw-alias-label-primary-foreground: #FFFFFF !important;
-        --dsw-alias-label-primary: #F1F5F9 !important;
-        --dsw-alias-label-secondary: #94A3B8 !important;
-        --dsw-alias-label-tertiary: #64748B !important;
-        --dsw-alias-label-dimmed: #475569 !important;
-        --dsw-alias-label-caption: #64748B !important;
-        --dsw-alias-interactive-bg-hover: rgba(59, 130, 246, 0.1) !important;
-        --dsw-alias-interactive-bg-active: rgba(59, 130, 246, 0.2) !important;
-        --dsw-alias-border-l1: #1E293B !important;
-        --dsw-alias-border-l2: #192436 !important;
-        --dsw-alias-border-l3: #334155 !important;
-        --dsw-alias-border-l4: #475569 !important;
-        --dsw-alias-markdown-code-block: #090D14 !important;
-        --dsw-alias-markdown-code-block-banner: #111827 !important;
-        --dsw-alias-scrollbar-bg-l2: #1E293B !important;
-        --dsw-alias-scrollbar-hover-l2: #3B82F6 !important;
+[class*="selector"], [class*="themeCube"] {
+        color: #2d3748 !important;
+        background-color: #e8e8e8 !important;
       }
-      body, body[data-ds-dark-theme] { background-color: #0B0F17 !important; color: #F1F5F9 !important; }
-      pre, code, [class*="codeBlock"] {
-        background-color: #090D14 !important;
-        color: #F1F5F9 !important;
-        border-color: #1E293B !important;
-      }
-    `
-  },
-  "catppuccin-mocha": {
-    name: "摩卡暗夜紫 (Catppuccin Mocha)",
-    desc: "优雅治愈的哑光暗夜紫调，搭配马卡龙玫瑰粉与罗兰紫",
-    type: "dark",
-    colorPreview: "#CBA6F7",
-    bgPreview: "#1E1E2E",
-    css: `
-      :root, html, body, body[data-ds-dark-theme] {
-        --dsw-alias-bg-base: #1E1E2E !important;
-        --dsw-alias-bg-layer-1: #181825 !important;
-        --dsw-alias-bg-layer-2: #313244 !important;
-        --dsw-alias-bg-mask-1: rgba(17, 17, 27, 0.7) !important;
-        --dsw-specific-sidebar-fill: #181825 !important;
-        --dsw-specific-sidebar-nav-item-hover: rgba(203, 166, 247, 0.1) !important;
-        --dsw-specific-sidebar-nav-item-active: rgba(203, 166, 247, 0.2) !important;
-        --dsw-specific-sidebar-nav-item-active-accent: #CBA6F7 !important;
-        --dsw-specific-input-major: #242438 !important;
-        --dsw-specific-bubble: #242438 !important;
-        --dsw-specific-menu: #181825 !important;
-        --dsw-hovercard-bg: #181825 !important;
-        --dsw-alias-tooltip-bg: #313244 !important;
-        --dsw-alias-button-elevated-fill: #313244 !important;
-        --dsw-alias-button-floating-hover: #45475A !important;
-        --dsw-alias-brand-primary: #CBA6F7 !important;
-        --dsw-alias-button-primary-fill: #CBA6F7 !important;
-        --dsw-alias-button-primary-hover: #B4BEFE !important;
-        --dsw-alias-label-primary-foreground: #11111B !important;
-        --dsw-alias-label-primary: #CDD6F4 !important;
-        --dsw-alias-label-secondary: #A6ADC8 !important;
-        --dsw-alias-label-tertiary: #7F849C !important;
-        --dsw-alias-label-dimmed: #585B70 !important;
-        --dsw-alias-label-caption: #7F849C !important;
-        --dsw-alias-interactive-bg-hover: rgba(203, 166, 247, 0.1) !important;
-        --dsw-alias-interactive-bg-active: rgba(203, 166, 247, 0.2) !important;
-        --dsw-alias-border-l1: #313244 !important;
-        --dsw-alias-border-l2: #28283D !important;
-        --dsw-alias-border-l3: #45475A !important;
-        --dsw-alias-border-l4: #585B70 !important;
-        --dsw-alias-markdown-code-block: #11111B !important;
-        --dsw-alias-markdown-code-block-banner: #181825 !important;
-        --dsw-alias-scrollbar-bg-l2: #313244 !important;
-        --dsw-alias-scrollbar-hover-l2: #CBA6F7 !important;
-      }
-      body, body[data-ds-dark-theme] { background-color: #1E1E2E !important; color: #CDD6F4 !important; }
-      pre, code, [class*="codeBlock"] {
-        background-color: #11111B !important;
-        color: #CDD6F4 !important;
-        border-color: #313244 !important;
-      }
-    `
-  },
-  "tokyo-night": {
-    name: "东京暗夜霓虹 (Tokyo Night)",
-    desc: "充满未来科技感的青紫夜景配色，电光蓝与暖日落点缀",
-    type: "dark",
-    colorPreview: "#7AA2F7",
-    bgPreview: "#1A1B26",
-    css: `
-      :root, html, body, body[data-ds-dark-theme] {
-        --dsw-alias-bg-base: #1A1B26 !important;
-        --dsw-alias-bg-layer-1: #16161E !important;
-        --dsw-alias-bg-layer-2: #24283B !important;
-        --dsw-alias-bg-mask-1: rgba(15, 15, 23, 0.75) !important;
-        --dsw-specific-sidebar-fill: #16161E !important;
-        --dsw-specific-sidebar-nav-item-hover: rgba(122, 162, 247, 0.1) !important;
-        --dsw-specific-sidebar-nav-item-active: rgba(122, 162, 247, 0.2) !important;
-        --dsw-specific-sidebar-nav-item-active-accent: #7AA2F7 !important;
-        --dsw-specific-input-major: #24283B !important;
-        --dsw-specific-bubble: #24283B !important;
-        --dsw-specific-menu: #1F2335 !important;
-        --dsw-hovercard-bg: #1F2335 !important;
-        --dsw-alias-tooltip-bg: #292E42 !important;
-        --dsw-alias-button-elevated-fill: #24283B !important;
-        --dsw-alias-button-floating-hover: #2F354F !important;
-        --dsw-alias-brand-primary: #7AA2F7 !important;
-        --dsw-alias-button-primary-fill: #7AA2F7 !important;
-        --dsw-alias-button-primary-hover: #89B4FA !important;
-        --dsw-alias-label-primary-foreground: #1A1B26 !important;
-        --dsw-alias-label-primary: #C0CAF5 !important;
-        --dsw-alias-label-secondary: #9AA5CE !important;
-        --dsw-alias-label-tertiary: #787C99 !important;
-        --dsw-alias-label-dimmed: #565F89 !important;
-        --dsw-alias-label-caption: #787C99 !important;
-        --dsw-alias-interactive-bg-hover: rgba(122, 162, 247, 0.1) !important;
-        --dsw-alias-interactive-bg-active: rgba(122, 162, 247, 0.2) !important;
-        --dsw-alias-border-l1: #292E42 !important;
-        --dsw-alias-border-l2: #23283B !important;
-        --dsw-alias-border-l3: #3B4261 !important;
-        --dsw-alias-border-l4: #565F89 !important;
-        --dsw-alias-markdown-code-block: #13141C !important;
-        --dsw-alias-markdown-code-block-banner: #16161E !important;
-        --dsw-alias-scrollbar-bg-l2: #292E42 !important;
-        --dsw-alias-scrollbar-hover-l2: #7AA2F7 !important;
-      }
-      body, body[data-ds-dark-theme] { background-color: #1A1B26 !important; color: #C0CAF5 !important; }
-      pre, code, [class*="codeBlock"] {
-        background-color: #13141C !important;
-        color: #C0CAF5 !important;
-        border-color: #292E42 !important;
+      [class*="selected"], [class*="themeCube"]:hover {
+        border-color: #ff9940 !important;
       }
     `
   }
@@ -636,17 +531,21 @@ const ESCOOK_THEMES = {
 
 function applyAppTheme(themeKey) {
   let styleEl = document.getElementById("dsh-builtin-theme-styles");
-  if (!themeKey || themeKey === "default") {
+  // 协同互斥：若页面存在来自插件市场的同类主题标签，主动清理避免双重覆盖冲突
+  const pluginStyleEl = document.getElementById("dsh-theme-escook-styles");
+  if (pluginStyleEl && pluginStyleEl.parentNode) {
+    pluginStyleEl.parentNode.removeChild(pluginStyleEl);
+  }
+
+  if (!themeKey || themeKey === "default" || !ESCOOK_THEMES[themeKey]) {
     if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
     document.documentElement.removeAttribute("data-dsh-theme");
     localStorage.setItem("dsh_selected_theme", "default");
-    console.log("🎨 [dsh-desktop] 已恢复系统默认主题");
+    console.info("🎨 [dsh-desktop] 已恢复系统默认主题");
     return;
   }
 
   const themeObj = ESCOOK_THEMES[themeKey];
-  if (!themeObj) return;
-
   if (!styleEl) {
     styleEl = document.createElement("style");
     styleEl.id = "dsh-builtin-theme-styles";
@@ -655,7 +554,97 @@ function applyAppTheme(themeKey) {
   styleEl.textContent = themeObj.css;
   document.documentElement.setAttribute("data-dsh-theme", `escook-${themeKey}`);
   localStorage.setItem("dsh_selected_theme", themeKey);
-  console.log(`🌸 [dsh-desktop] 已激活主题: ${themeObj.name}`);
+  console.info(`🌸 [dsh-desktop] 已激活主题: ${themeObj.name}`);
+}
+
+window.__DSH_BUILTIN_THEMES__ = {
+  themes: ESCOOK_THEMES,
+  apply: applyAppTheme,
+  getCurrent: () => localStorage.getItem("dsh_selected_theme") || "default",
+  registerThemes(newThemes) {
+    if (!newThemes || typeof newThemes !== "object") return;
+    let hasUpdate = false;
+    for (const [key, val] of Object.entries(newThemes)) {
+      if (val && typeof val === "object" && val.css) {
+        ESCOOK_THEMES[key] = val;
+        hasUpdate = true;
+      }
+    }
+    if (hasUpdate) {
+      console.info("✨ [dsh-desktop] 已通过插件市场热挂载/更新主题矩阵:", Object.keys(ESCOOK_THEMES));
+      const current = localStorage.getItem("dsh_selected_theme");
+      if (current && ESCOOK_THEMES[current]) {
+        applyAppTheme(current);
+      }
+    }
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Built-in Font Schemes: 常用高可读性编程与界面字体 (Code & UI Fonts)
+// ---------------------------------------------------------------------------
+const BUILTIN_FONTS = {
+  "default": {
+    name: "系统默认等宽 (System Default)",
+    desc: "使用系统原生默认等宽字体（Consolas / Segoe UI Mono），平稳通用",
+    mono: "Consolas, 'Courier New', monospace"
+  },
+  "jetbrains": {
+    name: "JetBrains Mono (极客推荐)",
+    desc: "为代码阅读专设的优质等宽字体，支持专业连字符号（!=, =>, ===）",
+    mono: "'JetBrains Mono', 'Fira Code', Consolas, monospace"
+  },
+  "fira": {
+    name: "Fira Code (经典连字)",
+    desc: "全球知名的编程连字字体（->, !=, ===, >=），视觉辨识度极高",
+    mono: "'Fira Code', 'JetBrains Mono', Consolas, monospace"
+  },
+  "cascadia": {
+    name: "Cascadia Code (微软现代)",
+    desc: "Windows Terminal / VS Code 官方默认连字字体，现代方正清晰",
+    mono: "'Cascadia Code', 'Cascadia Mono', Consolas, monospace"
+  },
+  "consolas": {
+    name: "Consolas (经典 Windows)",
+    desc: "Windows 经典内置等宽字体，开箱即用，轻快整洁零延迟",
+    mono: "Consolas, 'Courier New', monospace"
+  }
+};
+
+function applyAppFont(fontKey) {
+  let styleEl = document.getElementById("dsh-custom-font-styles");
+  if (!fontKey || fontKey === "default" || !BUILTIN_FONTS[fontKey]) {
+    if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
+    localStorage.setItem("dsh_selected_font", "default");
+    console.info("🔤 [dsh-desktop] 已恢复系统默认字体");
+    return;
+  }
+
+  const fontObj = BUILTIN_FONTS[fontKey];
+  if (!styleEl) {
+    styleEl = document.createElement("style");
+    styleEl.id = "dsh-custom-font-styles";
+    document.head.appendChild(styleEl);
+  }
+
+  let fontFaceImport = "";
+  if (fontKey === "jetbrains") {
+    fontFaceImport = `@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');`;
+  } else if (fontKey === "fira") {
+    fontFaceImport = `@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&display=swap');`;
+  } else if (fontKey === "cascadia") {
+    fontFaceImport = `@import url('https://cdn.jsdelivr.net/npm/@fontsource/cascadia-code@5.0.14/index.css');`;
+  }
+
+  styleEl.textContent = `
+    ${fontFaceImport}
+    pre, code, kbd, samp, [class*="codeBlock"], [class*="mono"], .font-mono, textarea {
+      font-family: ${fontObj.mono} !important;
+      font-feature-settings: "calt" 1, "liga" 1 !important;
+    }
+  `;
+  localStorage.setItem("dsh_selected_font", fontKey);
+  console.info(`🔤 [dsh-desktop] 已激活编程字体: ${fontObj.name}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -668,6 +657,7 @@ function showThemeModal() {
   }
 
   const currentTheme = localStorage.getItem("dsh_selected_theme") || "default";
+  const currentFont = localStorage.getItem("dsh_selected_font") || "default";
   const isDark = document.documentElement.classList.contains("dark") || 
                  document.body.classList.contains("dark") || 
                  window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -696,14 +686,14 @@ function showThemeModal() {
 
   overlay.innerHTML = `
     <div style="
-      width: 540px;
+      width: 560px;
       max-width: 90vw;
       max-height: 85vh;
       background: ${cardBg};
       color: ${textColor};
       border: 1px solid ${borderColor};
       border-radius: 16px;
-      padding: 28px;
+      padding: 24px 28px;
       box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
       display: flex;
       flex-direction: column;
@@ -713,41 +703,47 @@ function showThemeModal() {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     ">
       <!-- 头部 -->
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid ${borderColor};">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid ${borderColor};">
         <div style="display: flex; align-items: center; gap: 12px;">
-          <div style="width: 42px; height: 42px; border-radius: 10px; background: #0f172a; display: flex; align-items: center; justify-content: center; font-size: 20px;">
+          <div style="width: 38px; height: 38px; border-radius: 10px; background: #0f172a; display: flex; align-items: center; justify-content: center; font-size: 18px;">
             🎨
           </div>
           <div>
-            <h3 style="margin: 0; font-size: 17px; font-weight: 700;">主题外观设置</h3>
-            <p style="margin: 3px 0 0 0; font-size: 12px; opacity: 0.7;">选择您喜爱的界面配色方案（即时生效并持久保存）</p>
+            <h3 style="margin: 0; font-size: 16px; font-weight: 700;">外观与字体设置</h3>
+            <p style="margin: 2px 0 0 0; font-size: 12px; opacity: 0.7;">即时切换界面配色方案与代码编程字体</p>
           </div>
         </div>
         <button id="dsh-theme-modal-close-btn" style="background: none; border: none; font-size: 18px; cursor: pointer; color: inherit; opacity: 0.6; padding: 4px 8px; border-radius: 6px;" title="关闭">✕</button>
       </div>
 
+      <!-- 主题标题 -->
+      <div style="font-size: 13px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+        <span>🎨</span>
+        <span>界面配色主题 (5 款)</span>
+      </div>
+
       <!-- 主题列表 -->
-      <div style="display: grid; gap: 10px; margin-bottom: 20px;">
+      <div style="display: grid; gap: 8px; margin-bottom: 16px;">
         <!-- 系统默认主题 -->
         <div class="dsh-theme-option-card" data-theme-key="default" style="
-          padding: 14px 16px;
+          padding: 12px 14px;
           background: ${currentTheme === 'default' ? 'rgba(37,99,235,0.1)' : itemBg};
-          border: 2px solid ${currentTheme === 'default' ? '#2563eb' : borderColor};
-          border-radius: 12px;
+          border: 1.5px solid ${currentTheme === 'default' ? '#2563eb' : borderColor};
+          border-radius: 10px;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: space-between;
           transition: all 0.2s;
         ">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="width: 24px; height: 24px; border-radius: 6px; background: #3b82f6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px;">⚙️</div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 22px; height: 22px; border-radius: 6px; background: #3b82f6; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px;">⚙️</div>
             <div>
-              <div style="font-weight: 600; font-size: 13px;">系统默认主题 (Default)</div>
-              <div style="font-size: 11px; opacity: 0.65; margin-top: 2px;">跟随 DeepSeek Harness 官方标准暗黑/明亮模式</div>
+              <div style="font-weight: 600; font-size: 12.5px;">系统默认主题 (Default)</div>
+              <div style="font-size: 10.5px; opacity: 0.65; margin-top: 1px;">跟随 DeepSeek Harness 官方标准暗黑/明亮模式</div>
             </div>
           </div>
-          <span style="font-size: 14px; font-weight: 700; color: #2563eb;">${currentTheme === 'default' ? '✓' : ''}</span>
+          <span style="font-size: 13px; font-weight: 700; color: #2563eb;">${currentTheme === 'default' ? '✓' : ''}</span>
         </div>
 
         <!-- 4 款彬哥主题 -->
@@ -755,42 +751,82 @@ function showThemeModal() {
           const isSelected = currentTheme === key;
           return `
             <div class="dsh-theme-option-card" data-theme-key="${key}" style="
-              padding: 14px 16px;
+              padding: 12px 14px;
               background: ${isSelected ? 'rgba(255,204,102,0.12)' : itemBg};
-              border: 2px solid ${isSelected ? t.colorPreview : borderColor};
-              border-radius: 12px;
+              border: 1.5px solid ${isSelected ? t.colorPreview : borderColor};
+              border-radius: 10px;
               cursor: pointer;
               display: flex;
               align-items: center;
               justify-content: space-between;
               transition: all 0.2s;
             ">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="width: 24px; height: 24px; border-radius: 6px; background: ${t.bgPreview}; border: 2px solid ${t.colorPreview}; display: flex; align-items: center; justify-content: center; font-size: 11px;">🌸</div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 22px; height: 22px; border-radius: 6px; background: ${t.bgPreview}; border: 2px solid ${t.colorPreview}; display: flex; align-items: center; justify-content: center; font-size: 11px;">🌸</div>
                 <div>
-                  <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                  <div style="font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 6px;">
                     <span>${t.name}</span>
-                    <span style="font-size: 9px; padding: 1px 5px; border-radius: 4px; background: ${t.colorPreview}; color: ${t.type === 'dark' && key !== 'dark' ? '#1f2430' : '#fff'}; font-weight: 700;">${t.type.toUpperCase()}</span>
+                    <span style="font-size: 9px; padding: 1px 4px; border-radius: 4px; background: ${t.colorPreview}; color: ${t.type === 'dark' && key !== 'dark' ? '#1f2430' : '#fff'}; font-weight: 700;">${t.type.toUpperCase()}</span>
                   </div>
-                  <div style="font-size: 11px; opacity: 0.65; margin-top: 2px;">${t.desc}</div>
+                  <div style="font-size: 10.5px; opacity: 0.65; margin-top: 1px;">${t.desc}</div>
                 </div>
               </div>
-              <span style="font-size: 14px; font-weight: 700; color: ${t.colorPreview};">${isSelected ? '✓' : ''}</span>
+              <span style="font-size: 13px; font-weight: 700; color: ${t.colorPreview};">${isSelected ? '✓' : ''}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <!-- 字体设置分割线与标题 -->
+      <div style="margin: 14px 0 10px 0; padding-top: 14px; border-top: 1px solid ${borderColor}; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 14px;">🔤</span>
+          <span style="font-weight: 700; font-size: 13px;">代码与编程字体 (Code Fonts)</span>
+        </div>
+        <span style="font-size: 11px; opacity: 0.6;">支持专业连字 (Ligatures)</span>
+      </div>
+
+      <!-- 字体列表 -->
+      <div style="display: grid; gap: 8px; margin-bottom: 16px;">
+        ${Object.entries(BUILTIN_FONTS).map(([fKey, fObj]) => {
+          const isSelected = currentFont === fKey;
+          return `
+            <div class="dsh-font-option-card" data-font-key="${fKey}" style="
+              padding: 10px 14px;
+              background: ${isSelected ? 'rgba(37,99,235,0.1)' : itemBg};
+              border: 1.5px solid ${isSelected ? '#2563eb' : borderColor};
+              border-radius: 10px;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              transition: all 0.2s;
+            ">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="font-family: ${fObj.mono}; font-size: 12px; font-weight: 700; opacity: 0.85; width: 44px; color: #2563eb;">
+                  =&gt; ==
+                </div>
+                <div>
+                  <div style="font-weight: 600; font-size: 12px; font-family: ${fObj.mono};">${fObj.name}</div>
+                  <div style="font-size: 10.5px; opacity: 0.6; margin-top: 1px;">${fObj.desc}</div>
+                </div>
+              </div>
+              <span style="font-size: 13px; font-weight: 700; color: #2563eb;">${isSelected ? '✓' : ''}</span>
             </div>
           `;
         }).join('')}
       </div>
 
       <!-- 底部跳转插件市场按钮 -->
-      <div style="padding-top: 14px; border-top: 1px solid ${borderColor}; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+      <div style="padding-top: 12px; border-top: 1px solid ${borderColor}; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
         <div style="font-size: 11px; opacity: 0.55;">🌸 致敬 liulongbin1314 / escook-theme</div>
         <button id="dsh-open-market-themes-btn" style="
-          padding: 6px 12px;
+          padding: 5px 10px;
           background: none;
           border: 1px solid ${borderColor};
           border-radius: 6px;
           color: inherit;
-          font-size: 12px;
+          font-size: 11.5px;
           cursor: pointer;
           display: inline-flex;
           align-items: center;
@@ -810,12 +846,20 @@ function showThemeModal() {
   overlay.querySelector("#dsh-theme-modal-close-btn").addEventListener("click", closeModal);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
 
-  // 绑定选项点击
+  // 绑定主题选项点击
   overlay.querySelectorAll(".dsh-theme-option-card").forEach((card) => {
     card.addEventListener("click", () => {
       const key = card.dataset.themeKey;
       applyAppTheme(key);
-      // 重新触发 showThemeModal 重新渲染选中状态
+      showThemeModal();
+    });
+  });
+
+  // 绑定字体选项点击
+  overlay.querySelectorAll(".dsh-font-option-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const fKey = card.dataset.fontKey;
+      applyAppFont(fKey);
       showThemeModal();
     });
   });
@@ -1230,19 +1274,75 @@ function injectCustomTabsIntoSettings() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Native Desktop Hook: 🌸 插件市场 escook-theme 卡片智能识别与桌面端联动
+// ---------------------------------------------------------------------------
+function enhanceEscookMarketCard() {
+  const cards = document.querySelectorAll("article, div, [class*='card']");
+  for (const card of cards) {
+    const text = card.textContent || "";
+    if (text.includes("dsh-theme-escook")) {
+      // 1. 将“未安装”改写为“🌟 客户端已内置”
+      const badgeCandidates = card.querySelectorAll("span, div, [class*='badge']");
+      for (const b of badgeCandidates) {
+        if ((b.textContent || "").trim() === "未安装") {
+          b.textContent = "🌟 客户端已内置";
+          b.style.color = "#10b981";
+          b.style.fontWeight = "600";
+        }
+      }
+
+      // 2. 将“安装”按钮改写为“🎨 切换主题”并绑定直接弹窗
+      const buttons = card.querySelectorAll("button");
+      for (const btn of buttons) {
+        if ((btn.textContent || "").trim() === "安装") {
+          btn.textContent = "🎨 切换外观";
+          btn.style.backgroundColor = "#ef820c";
+          btn.style.borderColor = "#ef820c";
+          btn.style.color = "#ffffff";
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            showThemeModal();
+          };
+        }
+      }
+
+      // 3. 将“暂无预览”占位图替换为高清 4 合 1 真实效果图
+      const coverBtn = card.querySelector("button[class*='themeCover']");
+      if (coverBtn && (coverBtn.textContent || "").includes("暂无预览")) {
+        coverBtn.disabled = false;
+        coverBtn.style.cursor = "pointer";
+        coverBtn.style.padding = "0";
+        coverBtn.innerHTML = `<img src="https://raw.githubusercontent.com/Simon-yyy/dsh-theme-escook/main/assets/preview.png" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;" alt="escook preview" />`;
+        coverBtn.onclick = (e) => {
+          e.stopPropagation();
+          showThemeModal();
+        };
+      }
+    }
+  }
+}
+
 // 页面加载及 DOM 变动时持续监听
 window.addEventListener("DOMContentLoaded", () => {
   const savedTheme = localStorage.getItem("dsh_selected_theme");
   if (savedTheme && savedTheme !== "default") {
     applyAppTheme(savedTheme);
   }
+  const savedFont = localStorage.getItem("dsh_selected_font");
+  if (savedFont && savedFont !== "default") {
+    applyAppFont(savedFont);
+  }
   enableSmoothWheelScrollFix();
   scanAndEnableRestartButtons();
   injectCustomTabsIntoSettings();
+    enhanceEscookMarketCard();
   
   const observer = new MutationObserver(() => {
     scanAndEnableRestartButtons();
     injectCustomTabsIntoSettings();
+    enhanceEscookMarketCard();
   });
   observer.observe(document.body, { childList: true, subtree: true });
 });
@@ -1250,4 +1350,5 @@ window.addEventListener("DOMContentLoaded", () => {
 setInterval(() => {
   scanAndEnableRestartButtons();
   injectCustomTabsIntoSettings();
+    enhanceEscookMarketCard();
 }, 1000);

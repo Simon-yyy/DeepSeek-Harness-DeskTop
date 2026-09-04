@@ -12,6 +12,7 @@ const changelogPath = path.join(rootDir, 'CHANGELOG.md');
 const args = process.argv.slice(2);
 const bumpType = args[0] || 'current';
 const updateNotes = args[1] || '';
+const log = (msg) => process.stdout.write(String(msg) + '\n');
 
 function computeSha256(filePath) {
   if (!fs.existsSync(filePath)) return '';
@@ -52,19 +53,19 @@ async function main() {
   const oldVersion = pkg.version;
   const newVersion = bumpVersion(oldVersion, bumpType);
 
-  console.log(`\n📦 [Release Workflow] Target Version: v${newVersion} (from v${oldVersion})`);
+  log(`\n📦 [Release Workflow] Target Version: v${newVersion} (from v${oldVersion})`);
 
   // 1. Update package.json version
   if (newVersion !== oldVersion) {
     pkg.version = newVersion;
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-    console.log(`✓ Updated package.json version to ${newVersion}`);
+    log(`✓ Updated package.json version to ${newVersion}`);
   }
 
   // 2. Build with electron-builder if not just reorganizing
-  console.log(`\n🚀 Building installer with electron-builder...`);
+  log(`\n🚀 Building installer with electron-builder...`);
   const builderCli = path.join(rootDir, 'node_modules', 'electron-builder', 'cli.js');
-  execSync(`"${process.execPath}" "${builderCli}" --win`, {
+  execSync(`"${process.execPath}" "${builderCli}" --win --publish never`, {
     stdio: 'inherit',
     windowsHide: true,
     cwd: rootDir,
@@ -76,7 +77,7 @@ async function main() {
   if (!fs.existsSync(versionFolder)) {
     fs.mkdirSync(versionFolder, { recursive: true });
   }
-  console.log(`\n📂 Created version archive folder: release/${versionFolderName}`);
+  log(`\n📂 Created version archive folder: release/${versionFolderName}`);
 
   // 4. Move generated installer and blockmap into version folder
   const installerName = `DSH Desktop Setup ${newVersion}.exe`;
@@ -90,11 +91,11 @@ async function main() {
 
   if (fs.existsSync(srcInstaller)) {
     fs.renameSync(srcInstaller, destInstaller);
-    console.log(`✓ Moved installer to: release/${versionFolderName}/${installerName}`);
+    log(`✓ Moved installer to: release/${versionFolderName}/${installerName}`);
   }
   if (fs.existsSync(srcBlockmap)) {
     fs.renameSync(srcBlockmap, destBlockmap);
-    console.log(`✓ Moved blockmap to: release/${versionFolderName}/${blockmapName}`);
+    log(`✓ Moved blockmap to: release/${versionFolderName}/${blockmapName}`);
   }
 
   // 5. Generate RELEASE_NOTES.md
@@ -140,7 +141,7 @@ ${notesBody}
 
   const releaseNotesPath = path.join(versionFolder, 'RELEASE_NOTES.md');
   fs.writeFileSync(releaseNotesPath, releaseNotesContent, 'utf8');
-  console.log(`✓ Generated: release/${versionFolderName}/RELEASE_NOTES.md`);
+  log(`✓ Generated: release/${versionFolderName}/RELEASE_NOTES.md`);
 
   // 6. Update global CHANGELOG.md
   let changelogContent = '';
@@ -154,7 +155,7 @@ ${notesBody}
   if (!changelogContent.includes(`## [v${newVersion}]`)) {
     changelogContent = changelogContent.replace('# DSH Desktop 版本更新日志\n\n', `# DSH Desktop 版本更新日志\n\n${newEntry}`);
     fs.writeFileSync(changelogPath, changelogContent, 'utf8');
-    console.log(`✓ Updated: CHANGELOG.md`);
+    log(`✓ Updated: CHANGELOG.md`);
   }
   // 7. Clean up older release archives, keep only the latest 2 versions
   const MAX_RETAIN_VERSIONS = 2;
@@ -176,14 +177,14 @@ ${notesBody}
       const oldDirPath = path.join(releaseDir, oldDirName);
       try {
         fs.rmSync(oldDirPath, { recursive: true, force: true });
-        console.log(`🧹 Cleaned up old release archive: release/${oldDirName} (only keeping latest ${MAX_RETAIN_VERSIONS})`);
+        log(`🧹 Cleaned up old release archive: release/${oldDirName} (only keeping latest ${MAX_RETAIN_VERSIONS})`);
       } catch (err) {
         console.warn(`Failed to remove old archive release/${oldDirName}:`, err.message);
       }
     }
   }
 
-  console.log(`\n🎉 [Release Done] Release v${newVersion} packaged and archived successfully!`);
+  log(`\n🎉 [Release Done] Release v${newVersion} packaged and archived successfully!`);
 }
 
 main().catch((err) => {

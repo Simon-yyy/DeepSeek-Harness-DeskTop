@@ -47,7 +47,7 @@ ipcMain.handle("save-paste-image", async (_event, { buffer, ext }) => {
   const filename = `dsh-modlens-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${safeExt}`;
   const filePath = path.join(tempDir, filename);
   await fs.promises.writeFile(filePath, Buffer.from(buffer));
-  console.log(`[dsh-desktop] Saved pasted image to ${filePath}`);
+  console.info(`[dsh-desktop] Saved pasted image to ${filePath}`);
   return filePath;
 });
 
@@ -346,26 +346,37 @@ function compareVersions(v1, v2) {
 // ---------------------------------------------------------------------------
 let isUpdatingKernel = false;
 
+function readPackageVersion(binPath) {
+  if (!binPath || !fs.existsSync(binPath)) return null;
+  try {
+    let dir = path.dirname(binPath);
+    for (let i = 0; i < 4; i++) {
+      const pkgPath = path.join(dir, "package.json");
+      if (fs.existsSync(pkgPath)) {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+        if (pkg.name === "@deepseek-ai/dsh" && pkg.version) {
+          return pkg.version;
+        }
+      }
+      dir = path.dirname(dir);
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 function getLocalKernelVersion() {
   try {
     const dshBin = resolveDshBin();
-    if (dshBin && fs.existsSync(dshBin)) {
-      let dir = path.dirname(dshBin);
-      for (let i = 0; i < 4; i++) {
-        const pkgPath = path.join(dir, "package.json");
-        if (fs.existsSync(pkgPath)) {
-          const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-          if (pkg.name === "@deepseek-ai/dsh" && pkg.version) {
-            return pkg.version;
-          }
-        }
-        dir = path.dirname(dir);
-      }
+    if (dshBin) {
+      const ver = readPackageVersion(dshBin);
+      if (ver) return ver;
     }
   } catch (err) {
     console.warn("[dsh-desktop] Failed to read local kernel version:", err.message);
   }
-  return "0.1.0-rc.8";
+  return "0.1.2-rc.1";
 }
 
 function fetchLatestKernelVersion() {
@@ -431,7 +442,7 @@ function checkForKernelUpdates(silent = true) {
   fetchLatestKernelVersion()
     .then((latestVersion) => {
       const localVersion = getLocalKernelVersion();
-      console.log(`[dsh-desktop] Kernel check: local=v${localVersion}, latest=v${latestVersion}`);
+      console.info(`[dsh-desktop] Kernel check: local=v${localVersion}, latest=v${latestVersion}`);
 
       if (latestVersion && compareVersions(latestVersion, localVersion) > 0) {
         dialog.showMessageBox(mainWindow || null, {
@@ -503,7 +514,7 @@ function upgradeKernel(targetVersion = "latest") {
     isUpdatingKernel = false;
     if (code === 0) {
       const newLocalVersion = getLocalKernelVersion();
-      console.log(`[dsh-desktop] Kernel upgraded successfully to v${newLocalVersion}`);
+      console.info(`[dsh-desktop] Kernel upgraded successfully to v${newLocalVersion}`);
 
       // 优雅热重启后台服务
       await restartBackendService();
@@ -545,14 +556,16 @@ function ensureNodeInPath() {
     const nodeDir = path.dirname(nodeBin);
     if (!process.env.PATH.includes(nodeDir)) {
       process.env.PATH = `${nodeDir};${process.env.PATH}`;
-      console.log(`[dsh-desktop] Prepend ${nodeDir} to PATH`);
+      console.info(`[dsh-desktop] Prepend ${nodeDir} to PATH`);
     }
   }
 }
 function resolveNode() {
   if (process.env.DSH_NODE && fs.existsSync(process.env.DSH_NODE)) return process.env.DSH_NODE;
   const roots = [
-        process.env.ProgramFiles ? path.join(process.env.ProgramFiles, "nodejs") : null,
+    "D:\\hclaw\\node",
+    "C:\\hclaw\\node",
+    process.env.ProgramFiles ? path.join(process.env.ProgramFiles, "nodejs") : null,
     process.env["ProgramFiles(x86)"] ? path.join(process.env["ProgramFiles(x86)"], "nodejs") : null,
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Programs", "nodejs") : null,
     process.env.APPDATA ? path.join(process.env.APPDATA, "nvm") : null,
@@ -592,44 +605,94 @@ function resolveNpm() {
 
 function resolveDshBin() {
   if (process.env.DSH_BIN && fs.existsSync(process.env.DSH_BIN)) return process.env.DSH_BIN;
+
+  // 1. 搜集所有已安装的全局及本地候选路径
+  const nodeBin = resolveNode();
+  const nodeDir = nodeBin && fs.existsSync(nodeBin) ? path.dirname(nodeBin) : null;
+
   const globalCandidates = [
-    path.join( "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
+    path.join(__dirname, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
+    path.join(process.cwd(), "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
+    nodeDir ? path.join(nodeDir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
+    "D:\\hclaw\\node\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js",
     process.env.APPDATA ? path.join(process.env.APPDATA, "npm", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
     process.env.ProgramFiles ? path.join(process.env.ProgramFiles, "nodejs", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
+    process.env["ProgramFiles(x86)"] ? path.join(process.env["ProgramFiles(x86)"], "nodejs", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
   ].filter(Boolean);
 
-  let best = null;
-  let bestTime = 0;
-
-  for (const candidate of globalCandidates) {
-    if (fs.existsSync(candidate)) {
+  const selectBest = (candidates) => {
+    let best = null;
+    let bestVer = null;
+    let bestTime = 0;
+    for (const c of candidates) {
+      if (!c || !fs.existsSync(c)) continue;
       try {
-        const st = fs.statSync(candidate);
-        if (st.mtimeMs > bestTime) { bestTime = st.mtimeMs; best = candidate; }
+        const ver = readPackageVersion(c);
+        const st = fs.statSync(c);
+        if (!best) {
+          best = c;
+          bestVer = ver;
+          bestTime = st.mtimeMs;
+          continue;
+        }
+        if (ver && bestVer) {
+          const cmp = compareVersions(ver, bestVer);
+          if (cmp > 0) {
+            best = c;
+            bestVer = ver;
+            bestTime = st.mtimeMs;
+          } else if (cmp === 0 && st.mtimeMs > bestTime) {
+            best = c;
+            bestTime = st.mtimeMs;
+          }
+        } else if (ver && !bestVer) {
+          best = c;
+          bestVer = ver;
+          bestTime = st.mtimeMs;
+        } else if (!ver && !bestVer && st.mtimeMs > bestTime) {
+          best = c;
+          bestTime = st.mtimeMs;
+        }
       } catch { /* ignore */ }
     }
-  }
+    return { best, bestVer, bestTime };
+  };
 
+  const globalResult = selectBest(globalCandidates);
+
+  // 2. 搜集 npx 缓存候选路径
   const cacheRoots = [
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "npm-cache", "_npx") : null,
     process.env.npm_config_cache ? path.join(process.env.npm_config_cache, "_npx") : null,
     path.join(process.env.USERPROFILE || "", ".npm", "_npx"),
   ].filter(Boolean);
 
+  const npxCandidates = [];
   for (const npxRoot of cacheRoots) {
     if (!fs.existsSync(npxRoot)) continue;
     let dirs;
     try { dirs = fs.readdirSync(npxRoot); } catch { continue; }
     for (const dir of dirs) {
-      const candidate = path.join(npxRoot, dir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
-      if (!fs.existsSync(candidate)) continue;
-      try {
-        const st = fs.statSync(candidate);
-        if (st.mtimeMs > bestTime) { bestTime = st.mtimeMs; best = candidate; }
-      } catch { /* ignore */ }
+      const c = path.join(npxRoot, dir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
+      if (fs.existsSync(c)) npxCandidates.push(c);
     }
   }
-  if (best) return best;
+
+  const npxResult = selectBest(npxCandidates);
+
+  // 3. 版本仲裁：若两者皆有，优先比较语义化版本号，若版本一致则优先使用正式安装的全局路径
+  if (globalResult.best && npxResult.best) {
+    if (npxResult.bestVer && globalResult.bestVer) {
+      const cmp = compareVersions(npxResult.bestVer, globalResult.bestVer);
+      if (cmp > 0) return npxResult.best;
+      return globalResult.best;
+    }
+    return globalResult.best;
+  }
+  if (globalResult.best) return globalResult.best;
+  if (npxResult.best) return npxResult.best;
+
+  // 4. 回退检查 PATH 系统中的 dsh
   const which = spawnSync("where", ["dsh"], { encoding: "utf8", shell: true, windowsHide: true });
   if (which.status === 0 && which.stdout.trim()) {
     const hit = which.stdout.trim().split(/\r?\n/).find((line) => /dsh\.cmd$/i.test(line));
@@ -643,6 +706,38 @@ function resolveDshBin() {
 // ---------------------------------------------------------------------------
 let backendProc = null;
 let backendSpawnedByUs = false;
+
+function cleanupOrphanBackend(port) {
+  if (process.platform !== "win32") return;
+  try {
+    const netstat = spawnSync("netstat", ["-ano"], { encoding: "utf8", windowsHide: true });
+    if (netstat.status !== 0 || !netstat.stdout) return;
+    const lines = netstat.stdout.split(/\r?\n/);
+    const pids = new Set();
+    for (const line of lines) {
+      if (line.includes(`:${port}`) && line.includes("LISTENING")) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (pid && /^\d+$/.test(pid) && pid !== "0") {
+          pids.add(pid);
+        }
+      }
+    }
+    for (const pid of pids) {
+      let cmdLine = "";
+      const ps = spawnSync("powershell", ["-NoProfile", "-Command", `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`], { encoding: "utf8", windowsHide: true });
+      if (ps.status === 0 && ps.stdout) {
+        cmdLine = ps.stdout;
+      }
+      if (/node(\.exe)?/i.test(cmdLine) && /dsh/i.test(cmdLine)) {
+        console.info(`[dsh-desktop] Detected stale DSH orphan process (PID: ${pid}) on port ${port}, terminating...`);
+        spawnSync("taskkill", ["/pid", pid, "/F", "/T"], { windowsHide: true });
+      }
+    }
+  } catch (e) {
+    console.warn("[dsh-desktop] cleanupOrphanBackend warning:", e.message);
+  }
+}
 
 function portInUse(port) {
   return new Promise((resolve) => {
@@ -686,7 +781,7 @@ function sanitizeCredentials() {
       if (bigmodelKey) clean += `BIGMODEL_API_KEY: "${bigmodelKey}"\n`;
       if (clean) {
         fs.writeFileSync(credPath, clean, "utf8");
-        console.log("[dsh-desktop] Auto-healed .credentials.yaml to standard flat format");
+        console.info("[dsh-desktop] Auto-healed .credentials.yaml to standard flat format");
       }
     }
   } catch (e) {
@@ -780,7 +875,23 @@ function ensureKernelCompatibilityShim() {
 
 function sanitizeWebProfile() {
   try {
-    const webPkgPath = path.join(app.getPath("home"), ".dsh", "profiles", "web", "package.json");
+    const webProfileDir = path.join(app.getPath("home"), ".dsh", "profiles", "web");
+
+    // 自动为插件运行目录配置 .npmrc：开启宽松依赖解析与国内极速镜像源，彻底根治插件更新/安装时的 ERESOLVE 冲突
+    try {
+      if (!fs.existsSync(webProfileDir)) {
+        fs.mkdirSync(webProfileDir, { recursive: true });
+      }
+      const npmrcPath = path.join(webProfileDir, ".npmrc");
+      const desiredNpmrc = "legacy-peer-deps=true\nregistry=https://registry.npmmirror.com/\n";
+      if (!fs.existsSync(npmrcPath) || fs.readFileSync(npmrcPath, "utf8") !== desiredNpmrc) {
+        fs.writeFileSync(npmrcPath, desiredNpmrc, "utf8");
+      }
+    } catch (npmrcErr) {
+      console.warn("[dsh-desktop] Failed to ensure web profile .npmrc:", npmrcErr.message);
+    }
+
+    const webPkgPath = path.join(webProfileDir, "package.json");
     if (!fs.existsSync(webPkgPath)) return;
     const pkg = JSON.parse(fs.readFileSync(webPkgPath, "utf8"));
     let modified = false;
@@ -831,7 +942,6 @@ function sanitizeWebProfile() {
 
     if (modified) {
       fs.writeFileSync(webPkgPath, JSON.stringify(pkg, null, 2), "utf8");
-      console.log("[dsh-desktop] Auto-healed web profile package.json (removed incompatible plugins).");
     }
   } catch (err) {
     console.warn("[dsh-desktop] Note: web profile check skipped:", err.message);
@@ -852,12 +962,15 @@ function spawnBackend() {
   const dshBin = resolveDshBin();
   let child;
 
-  console.log("[dsh-desktop] Starting DSH Web Kernel via Node process...");
-  console.log("[dsh-desktop] nodeBin:", nodeBin, "dshBin:", dshBin);
+  console.info("[dsh-desktop] Starting DSH Web Kernel via Node process...");
+  console.info("[dsh-desktop] nodeBin:", nodeBin, "dshBin:", dshBin);
 
   if (dshBin && /\.cmd$/i.test(dshBin)) {
     child = spawn(dshBin, ["web", "--no-open"], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
   } else if (dshBin) {
+    if (nodeBin === process.execPath) {
+      env.ELECTRON_RUN_AS_NODE = "1";
+    }
     child = spawn(nodeBin, [dshBin, "web", "--no-open"], {
       cwd,
       env,
@@ -872,11 +985,11 @@ function spawnBackend() {
     child.stdout.on("data", (data) => {
       const str = data.toString().trim();
       if (str) {
-        console.log("[DSH Kernel]", str);
+        console.info("[DSH Kernel]", str);
         const match = str.match(/dsh web:\s+(http:\/\/[^\s]+)/i);
         if (match && match[1]) {
           currentAuthUrl = match[1].trim();
-          console.log("[dsh-desktop] Captured Kernel Auth URL:", currentAuthUrl);
+          console.info("[dsh-desktop] Captured Kernel Auth URL:", currentAuthUrl);
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.loadURL(currentAuthUrl).catch(() => {});
           }
@@ -891,10 +1004,14 @@ function spawnBackend() {
     });
   }
 
+  child.on("error", (err) => {
+    console.error("[dsh-desktop] Failed to spawn DSH Backend child process:", err);
+  });
+
   backendSpawnedByUs = true;
   backendProc = child;
   child.on("exit", (code) => {
-    console.log("[dsh-desktop] DSH Backend exited with code:", code);
+    console.info("[dsh-desktop] DSH Backend exited with code:", code);
     backendProc = null;
   });
   return child;
@@ -923,9 +1040,10 @@ function stopBackendIfOurs() {
 }
 
 async function restartBackendService() {
-  console.log("[dsh-desktop] Restarting backend service...");
+  console.info("[dsh-desktop] Restarting backend service...");
   try {
     stopBackendIfOurs();
+    cleanupOrphanBackend(WEB_PORT);
     let retries = 25;
     while ((await portInUse(WEB_PORT)) && retries-- > 0) {
       await new Promise((r) => setTimeout(r, 200));
@@ -956,7 +1074,7 @@ async function restartBackendService() {
 // Native Desktop IPC: Restart Backend Service & App Info & Updates
 // ---------------------------------------------------------------------------
 ipcMain.handle("restart-backend-service", async () => {
-  console.log("[dsh-desktop] Triggering native restart of DSH Backend...");
+  console.info("[dsh-desktop] Triggering native restart of DSH Backend...");
   return await restartBackendService();
 });
 
@@ -1035,7 +1153,7 @@ function ensureBundledSkills() {
       for (const targetDir of targetDirs) {
         copyDirSyncSafe(sourceSkills, targetDir);
       }
-      console.log("[dsh-desktop] 35 Bundled skills successfully initialized from: " + sourceSkills);
+      console.info("[dsh-desktop] 35 Bundled skills successfully initialized from: " + sourceSkills);
     } else {
       console.warn("[dsh-desktop] Bundled skills source folder not found in candidates:", candidates);
     }
@@ -1265,12 +1383,15 @@ app.whenReady().then(async () => {
     console.warn("Global shortcut register failed:", err.message);
   }
 
+  // 启动前先自愈检查：终结此前残留的任何 dsh 孤儿进程，确保纯净拉起当前最高版本内核
+  cleanupOrphanBackend(WEB_PORT);
+
   let started = false;
   if (await portInUse(WEB_PORT)) {
-    console.log(`dsh web already running on ${WEB_PORT}, reusing it`);
+    console.info(`dsh web already running on ${WEB_PORT}, reusing it`);
     started = true;
   } else {
-    console.log("spawning dsh web backend...");
+    console.info("spawning dsh web backend...");
     spawnBackend();
     started = await waitForWeb(STARTUP_TIMEOUT_MS);
   }
