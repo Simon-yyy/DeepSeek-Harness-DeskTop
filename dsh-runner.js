@@ -151,21 +151,37 @@ async function boot() {
     process.exit(1);
   }
 
-  // Set up process argv to simulate `dsh web --no-open`
-  process.argv = [process.execPath, dshBin, "web", "--no-open"];
+  // Set up process argv to simulate `dsh web --no-open --port <port>`
+  const runnerPort = process.env.PORT || process.env.DSH_PORT;
+  const portArgs = runnerPort ? ["--port", String(runnerPort)] : [];
+  process.argv = [process.execPath, dshBin, "web", "--no-open", ...portArgs];
 
   // Ensure Node environment paths are available
   if (!process.env.DSH_HOME) {
     process.env.DSH_HOME = path.join(process.env.USERPROFILE || process.env.HOME || "", ".dsh");
   }
 
-  console.info(`[dsh-runner] Booting DSH Kernel from: ${dshBin}`);
+  console.info(`[dsh-runner] Booting DSH Kernel on port ${runnerPort || "default"} from: ${dshBin}`);
 
   try {
-    // 注入通用第三方 AI 渠道与反代防 WAF 拦截指纹兜底
+    // 注入通用第三方 AI 渠道与反代防 WAF 拦截指纹兜底 (对齐 cline/3.0.0 与标头保护)
+    const TARGET_UA = "cline/3.0.0";
     const originalFetch = globalThis.fetch;
     if (typeof originalFetch === "function") {
       globalThis.fetch = function (resource, options = {}) {
+        if (typeof Request !== "undefined" && resource instanceof Request) {
+          const headers = new Headers(resource.headers);
+          const currentUa = headers.get("User-Agent") || headers.get("user-agent") || "";
+          const urlStr = resource.url || "";
+          const isLoopback = urlStr.includes("127.0.0.1") || urlStr.includes("localhost");
+          const isOfficial = urlStr.includes("api.deepseek.com") || urlStr.includes("registry.npm");
+          if (!isLoopback && !isOfficial && (urlStr.includes("/v1") || urlStr.includes("/chat") || urlStr.includes("/models") || urlStr.includes("/messages"))) {
+            headers.set("User-Agent", TARGET_UA);
+          }
+          const newReq = new Request(resource, { headers });
+          return originalFetch(newReq, options);
+        }
+
         const urlStr = typeof resource === "string" ? resource : (resource && resource.url) || "";
         const isLoopback = urlStr.includes("127.0.0.1") || urlStr.includes("localhost");
         const isOfficialDeepSeek = urlStr.includes("api.deepseek.com") || urlStr.includes("registry.npm");
@@ -179,17 +195,7 @@ async function boot() {
             headers = new Headers(headers);
           }
 
-          // 统一赋予高兼容度白名单 Client 指纹，拦截 deepseek-harness、node-fetch、undici、@deepseek-ai 等特征
-          const currentUa = headers.get("User-Agent") || headers.get("user-agent") || "";
-          if (
-            !currentUa ||
-            currentUa.includes("deepseek-harness") ||
-            currentUa.includes("@deepseek-ai") ||
-            currentUa.includes("node-fetch") ||
-            currentUa.includes("undici")
-          ) {
-            headers.set("User-Agent", "claude-cli/2.1.119 (external, cli)");
-          }
+          headers.set("User-Agent", TARGET_UA);
           opt.headers = headers;
           return originalFetch(resource, opt);
         }

@@ -1,12 +1,13 @@
 {
   "name": "dsh-desktop",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "DeepSeek Harness Web GUI desktop launcher (Electron)",
   "main": "main.js",
   "author": "Simon-yyy",
   "license": "MIT",
   "private": true,
   "scripts": {
+    "test": "node --test test/**/*.test.js",
     "start": "electron .",
     "build:icon": "node make-icon.mjs",
     "dist": "electron-builder --win --publish never",
@@ -41,7 +42,8 @@
       "build/**/*",
       "icon.ico",
       "icon.png",
-      "bundled-skills/**/*"
+      "bundled-skills/**/*",
+      "src/**/*"
     ],
     "win": {
       "target": [

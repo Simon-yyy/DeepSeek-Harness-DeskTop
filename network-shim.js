@@ -5,6 +5,21 @@
 (() => {
   const TARGET_UA = "cline/3.0.0";
 
+  // 护栏零：孤儿进程免疫看门狗 (P1-3)
+  // 当以受管子进程方式由 Electron 拉起时，监听 stdin 管道状态。
+  // 若主进程发生 crash、被杀死或退出，操作系统管道立即断开，本子进程秒级自毁，杜绝孤儿残留占用端口。
+  if (process.env.DSH_DESKTOP_MANAGED === "1" && process.stdin && typeof process.stdin.on === "function") {
+    try {
+      process.stdin.resume();
+      process.stdin.on("end", () => {
+        process.exit(0);
+      });
+      process.stdin.on("close", () => {
+        process.exit(0);
+      });
+    } catch (_e) {}
+  }
+
   function shouldOverrideUa(urlStr, currentUa) {
     if (!urlStr) return false;
 

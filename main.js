@@ -1,10 +1,15 @@
-const { app, BrowserWindow, shell, dialog, nativeImage, ipcMain, Tray, Menu, globalShortcut, utilityProcess, session } = require("electron");
+const { app, BrowserWindow, shell, dialog, nativeImage, ipcMain, Tray, Menu, globalShortcut, utilityProcess, session, safeStorage } = require("electron");
 const { spawn, spawnSync } = require("node:child_process");
 const http = require("node:http");
 const https = require("node:https");
 const net = require("node:net");
 const fs = require("node:fs");
 const path = require("node:path");
+
+// 引入模块化拆分域模块 (P1-1 Architecture Decoupling)
+const { compareVersions } = require("./src/main/utils/version");
+const { isPortFree, acquirePort: acquirePortUtil } = require("./src/main/utils/port");
+const { KERNEL_COMPAT, checkKernelCompat } = require("./src/main/utils/compat");
 
 // Set AppUserModelId so Windows Taskbar binds correctly to the desktop shortcut & icon
 app.setAppUserModelId("com.dsh.desktop");
@@ -39,24 +44,53 @@ let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 
-// Handle image paste: save to local temp file with strict extension whitelist
+// ---------------------------------------------------------------------------
+// Clipboard Image Cache: Dedicated directory, size guard & lifecycle cleanup
+// ---------------------------------------------------------------------------
+const CLIP_DIR = path.join(app.getPath("temp"), "dsh-clipboard");
+
+function cleanupClipboardTemp() {
+  try {
+    if (fs.existsSync(CLIP_DIR)) {
+      fs.rmSync(CLIP_DIR, { recursive: true, force: true });
+      console.info("[dsh-desktop] Cleaned up clipboard temp directory");
+    }
+  } catch (_e) {}
+}
+
 ipcMain.handle("save-paste-image", async (_event, { buffer, ext }) => {
   const allowedExts = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"];
   const safeExt = allowedExts.includes((ext || "").toLowerCase()) ? (ext || "").toLowerCase() : ".png";
-  const tempDir = app.getPath("temp");
-  const filename = `dsh-modlens-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${safeExt}`;
-  const filePath = path.join(tempDir, filename);
+  if (!fs.existsSync(CLIP_DIR)) {
+    fs.mkdirSync(CLIP_DIR, { recursive: true });
+  }
+  // 安全限制：防止超过 25MB 的异常大图撑爆本地磁盘
+  if (buffer && buffer.length > 25 * 1024 * 1024) {
+    throw new Error("图片体积超过上限 (最大 25MB)");
+  }
+  const filename = `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${safeExt}`;
+  const filePath = path.join(CLIP_DIR, filename);
   await fs.promises.writeFile(filePath, Buffer.from(buffer));
   console.info(`[dsh-desktop] Saved pasted image to ${filePath}`);
   return filePath;
 });
 
-const WEB_PORT = 3080;
-const WEB_URL = `http://127.0.0.1:${WEB_PORT}`;
+// ---------------------------------------------------------------------------
+// Dynamic Port & Backend URL Management (P0-1 Security Hardening)
+// ---------------------------------------------------------------------------
+let WEB_PORT = 3080;
+let WEB_URL = `http://127.0.0.1:${WEB_PORT}`;
 let currentAuthUrl = "";
 const STARTUP_TIMEOUT_MS = 90_000;
 const REPO_OWNER = "Simon-yyy";
 const REPO_NAME = "DeepSeek-Harness-DeskTop";
+
+async function acquirePort(preferred = 3080, maxOffset = 10) {
+  const p = await acquirePortUtil(preferred, maxOffset, cleanupOrphanBackend);
+  WEB_PORT = p;
+  WEB_URL = `http://127.0.0.1:${p}`;
+  return p;
+}
 
 // ---------------------------------------------------------------------------
 // Auto-Updater: In-App Download, Auto-Install & GitHub Release Sync
@@ -314,32 +348,7 @@ async function checkForUpdates(silent = true) {
   }
 }
 
-function compareVersions(v1, v2) {
-  const clean1 = (v1 || "").replace(/^v/, "").trim();
-  const clean2 = (v2 || "").replace(/^v/, "").trim();
-  if (clean1 === clean2) return 0;
-
-  const [main1, pre1] = clean1.split("-");
-  const [main2, pre2] = clean2.split("-");
-
-  const p1 = (main1 || "").split(".").map((n) => parseInt(n, 10) || 0);
-  const p2 = (main2 || "").split(".").map((n) => parseInt(n, 10) || 0);
-
-  for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
-    const num1 = p1[i] || 0;
-    const num2 = p2[i] || 0;
-    if (num1 > num2) return 1;
-    if (num1 < num2) return -1;
-  }
-
-  // 没有 pre 标识的为正式版，正式版高于预发布版 (如 0.1.1 > 0.1.1-rc.2)
-  if (!pre1 && pre2) return 1;
-  if (pre1 && !pre2) return -1;
-  if (pre1 && pre2) {
-    return pre1.localeCompare(pre2, undefined, { numeric: true, sensitivity: "base" });
-  }
-  return 0;
-}
+// compareVersions 工具函数已迁移至 ./src/main/utils/version.js (P1-1)
 
 // ---------------------------------------------------------------------------
 // DSH Official Kernel Version Check & In-App Upgrade
@@ -427,6 +436,8 @@ function fetchLatestKernelVersion() {
   });
 }
 
+// KERNEL_COMPAT 与 checkKernelCompat 已迁移至 ./src/main/utils/compat.js (P1-1)
+
 function checkForKernelUpdates(silent = true) {
   if (isDownloadingUpdate || isUpdatingKernel) {
     if (!silent) {
@@ -445,6 +456,18 @@ function checkForKernelUpdates(silent = true) {
       console.info(`[dsh-desktop] Kernel check: local=v${localVersion}, latest=v${latestVersion}`);
 
       if (latestVersion && compareVersions(latestVersion, localVersion) > 0) {
+        // 校验版本兼容性矩阵 (P1-5)
+        const compat = checkKernelCompat(latestVersion);
+        if (!compat.ok) {
+          dialog.showMessageBox(mainWindow || null, {
+            type: "warning",
+            title: "官方内核升级提醒",
+            message: compat.message,
+            buttons: ["我知道了"],
+          });
+          return;
+        }
+
         dialog.showMessageBox(mainWindow || null, {
           type: "info",
           title: `⚡ 发现 DeepSeek 官方新内核 (v${latestVersion})`,
@@ -497,7 +520,8 @@ function upgradeKernel(targetVersion = "latest") {
     buttons: ["好的"],
   });
 
-  const installProcess = spawn(npmBin, ["install", "-g", `@deepseek-ai/dsh@${targetVersion}`], {
+  // 安全安装：锁定官方内核，并附加 --ignore-scripts 防范第三方依赖 postinstall 脚本恶意执行 (P0-3)
+  const installProcess = spawn(npmBin, ["install", "-g", `@deepseek-ai/dsh@${targetVersion}`, "--ignore-scripts"], {
     shell: true,
     windowsHide: true,
     env: process.env,
@@ -710,19 +734,36 @@ let backendSpawnedByUs = false;
 function cleanupOrphanBackend(port) {
   if (process.platform !== "win32") return;
   try {
-    const netstat = spawnSync("netstat", ["-ano"], { encoding: "utf8", windowsHide: true });
-    if (netstat.status !== 0 || !netstat.stdout) return;
-    const lines = netstat.stdout.split(/\r?\n/);
     const pids = new Set();
-    for (const line of lines) {
-      if (line.includes(`:${port}`)) {
-        const parts = line.trim().split(/\s+/);
-        const pid = parts[parts.length - 1];
-        if (pid && /^\d+$/.test(pid) && pid !== "0") {
-          pids.add(pid);
+
+    // 1. 优先读取持久化的 backend.pid 孤儿记录文件 (P1-3)
+    try {
+      const pidFile = path.join(app.getPath("userData"), "backend.pid");
+      if (fs.existsSync(pidFile)) {
+        const savedPid = fs.readFileSync(pidFile, "utf8").trim();
+        if (savedPid && /^\d+$/.test(savedPid) && savedPid !== "0") {
+          pids.add(savedPid);
+        }
+        try { fs.unlinkSync(pidFile); } catch (_e) {}
+      }
+    } catch (_e) {}
+
+    // 2. 扫描端口上监听的进程 PID
+    const netstat = spawnSync("netstat", ["-ano"], { encoding: "utf8", windowsHide: true });
+    if (netstat.status === 0 && netstat.stdout) {
+      const lines = netstat.stdout.split(/\r?\n/);
+      for (const line of lines) {
+        if (line.includes(`:${port}`)) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && /^\d+$/.test(pid) && pid !== "0") {
+            pids.add(pid);
+          }
         }
       }
     }
+
+    // 3. 安全校验进程名称并强制树状终结
     for (const pid of pids) {
       try {
         const ps = spawnSync("powershell", ["-NoProfile", "-Command", `(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).ProcessName`], { encoding: "utf8", windowsHide: true });
@@ -983,16 +1024,23 @@ function spawnBackend() {
   const dshBin = resolveDshBin();
   let child;
 
-  console.info("[dsh-desktop] Starting DSH Web Kernel via Node process...");
+  console.info(`[dsh-desktop] Starting DSH Web Kernel on port ${WEB_PORT} via Node process...`);
   console.info("[dsh-desktop] nodeBin:", nodeBin, "dshBin:", dshBin);
 
+  env.PORT = String(WEB_PORT);
+  env.DSH_PORT = String(WEB_PORT);
+  env.DSH_DESKTOP_MANAGED = "1"; // 激活 network-shim 孤儿进程看门狗自毁机制
+  const portArgs = ["--port", String(WEB_PORT)];
+
   if (dshBin && /\.cmd$/i.test(dshBin)) {
-    child = spawn(dshBin, ["web", "--no-open"], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
+    child = spawn(dshBin, ["web", "--no-open", ...portArgs], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
   } else if (dshBin) {
     if (nodeBin === process.execPath) {
       env.ELECTRON_RUN_AS_NODE = "1";
     }
-    const nodeArgs = activeShimPath ? ["-r", activeShimPath, dshBin, "web", "--no-open"] : [dshBin, "web", "--no-open"];
+    const nodeArgs = activeShimPath
+      ? ["-r", activeShimPath, dshBin, "web", "--no-open", ...portArgs]
+      : [dshBin, "web", "--no-open", ...portArgs];
     child = spawn(nodeBin, nodeArgs, {
       cwd,
       env,
@@ -1000,7 +1048,7 @@ function spawnBackend() {
       windowsHide: true,
     });
   } else {
-    child = spawn("npx", ["-y", "@deepseek-ai/dsh", "web", "--no-open"], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
+    child = spawn("npx", ["-y", "@deepseek-ai/dsh", "web", "--no-open", ...portArgs], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
   }
 
   if (child.stdout) {
@@ -1036,14 +1084,30 @@ function spawnBackend() {
 
   backendSpawnedByUs = true;
   backendProc = child;
+
+  // 持久化记录子进程 PID 以供下次异常自愈与查杀 (P1-3)
+  try {
+    const pidFile = path.join(app.getPath("userData"), "backend.pid");
+    if (child.pid) fs.writeFileSync(pidFile, String(child.pid), "utf8");
+  } catch (_e) {}
+
   child.on("exit", (code) => {
     console.info("[dsh-desktop] DSH Backend exited with code:", code);
     backendProc = null;
+    try {
+      const pidFile = path.join(app.getPath("userData"), "backend.pid");
+      if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile);
+    } catch (_e) {}
   });
   return child;
 }
 
 function stopBackendIfOurs() {
+  try {
+    const pidFile = path.join(app.getPath("userData"), "backend.pid");
+    if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile);
+  } catch (_e) {}
+
   if (backendSpawnedByUs && backendProc) {
     try {
       if (typeof backendProc.postMessage === "function") {
@@ -1069,10 +1133,17 @@ async function restartBackendService() {
   console.info("[dsh-desktop] Restarting backend service...");
   try {
     stopBackendIfOurs();
-    cleanupOrphanBackend(WEB_PORT);
-    let retries = 25;
+    let retries = 15;
     while ((await portInUse(WEB_PORT)) && retries-- > 0) {
       await new Promise((r) => setTimeout(r, 200));
+    }
+    // 动态端口确认：若原端口仍被占用，自动漂移至下一个可用空闲端口
+    if (await portInUse(WEB_PORT)) {
+      try {
+        await acquirePort(WEB_PORT, 10);
+      } catch (e) {
+        console.warn("[dsh-desktop] acquirePort fallback during restart:", e.message);
+      }
     }
     spawnBackend();
     const ready = await waitForWeb(30_000);
@@ -1105,15 +1176,54 @@ ipcMain.handle("restart-backend-service", async () => {
 });
 
 ipcMain.handle("get-app-info", () => {
+  const kernelVer = getLocalKernelVersion();
+  const isEncAvailable = safeStorage ? safeStorage.isEncryptionAvailable() : false;
   return {
     version: app.getVersion(),
     name: "DSH Desktop",
-    kernelVersion: getLocalKernelVersion(),
+    kernelVersion: kernelVer,
     electronVersion: process.versions.electron,
     nodeVersion: process.versions.node,
     platform: process.platform,
     arch: process.arch,
+    port: WEB_PORT,
+    activeUrl: currentAuthUrl || WEB_URL,
+    secureStorageAvailable: isEncAvailable,
+    diagnosticText: `DSH Desktop v${app.getVersion()} | Kernel: ${kernelVer} | Electron: ${process.versions.electron} | Node: ${process.versions.node} | Port: ${WEB_PORT} | Platform: ${process.platform}-${process.arch}`,
   };
+});
+
+// ---------------------------------------------------------------------------
+// Native DPAPI SafeStorage for Sensitive Keys & Credentials (P0-2)
+// ---------------------------------------------------------------------------
+ipcMain.handle("secure-encrypt", async (_event, plainText) => {
+  if (!plainText) return "";
+  try {
+    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      const buffer = safeStorage.encryptString(plainText);
+      return buffer.toString("base64");
+    }
+  } catch (err) {
+    console.warn("[dsh-desktop] safeStorage encryption error:", err.message);
+  }
+  return plainText;
+});
+
+ipcMain.handle("secure-decrypt", async (_event, cipherBase64) => {
+  if (!cipherBase64) return "";
+  try {
+    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      const buffer = Buffer.from(cipherBase64, "base64");
+      return safeStorage.decryptString(buffer);
+    }
+  } catch (_err) {
+    return cipherBase64;
+  }
+  return cipherBase64;
+});
+
+ipcMain.handle("is-secure-storage-available", () => {
+  return safeStorage ? safeStorage.isEncryptionAvailable() : false;
 });
 
 ipcMain.handle("check-for-updates-manual", () => {
@@ -1348,18 +1458,51 @@ function createWindow() {
       try { fs.writeFileSync(marker, `FAIL ${code}: ${desc}`); } catch (e) { log(`marker write error: ${e.message}`); }
       setTimeout(() => { app.quit(); }, 500);
     });
+  } else {
+    // 生产环境：后端连接失败自动有限次重连自愈 (P1-2 防竞态与白屏)
+    let loadRetryCount = 0;
+    mainWindow.webContents.on("did-fail-load", (_e, errorCode, errorDescription, validatedURL) => {
+      console.warn(`[dsh-desktop] did-fail-load: code=${errorCode} desc=${errorDescription} url=${validatedURL}`);
+      if ([-102, -105, -106, -118].includes(errorCode)) { // 典型网络未就绪/拒绝连接
+        if (loadRetryCount < 5) {
+          loadRetryCount++;
+          console.info(`[dsh-desktop] Backend initializing... auto retrying connection (${loadRetryCount}/5) in 1.5s...`);
+          setTimeout(() => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.loadURL(currentAuthUrl || WEB_URL).catch(() => {});
+            }
+          }, 1500);
+        }
+      }
+    });
   }
 
   // Open external links in system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
       const parsed = new URL(url);
-      if (parsed.origin === WEB_URL) {
+      const allowedOrigin = new URL(currentAuthUrl || WEB_URL).origin;
+      if (parsed.origin === WEB_URL || parsed.origin === allowedOrigin) {
         return { action: "allow" };
       }
     } catch (_e) {}
     shell.openExternal(url);
     return { action: "deny" };
+  });
+
+  // 严格拦截当前窗口内部向外网非受信地址的直接页面跳转
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    try {
+      const parsed = new URL(url);
+      const allowedOrigin = new URL(currentAuthUrl || WEB_URL).origin;
+      if (parsed.origin === WEB_URL || parsed.origin === allowedOrigin) {
+        return;
+      }
+    } catch (_e) {}
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
   });
 
   // Create system tray
@@ -1380,11 +1523,32 @@ app.on("second-instance", () => {
 });
 
 app.whenReady().then(async () => {
-  if (session && session.defaultSession) { session.defaultSession.clearCache().catch(() => {}); session.defaultSession.clearCodeCaches({}).catch(() => {}); }
+  if (session && session.defaultSession) {
+    session.defaultSession.clearCache().catch(() => {});
+    session.defaultSession.clearCodeCaches({}).catch(() => {});
+
+    // 注入纵深防御 CSP 响应头策略 (P3-3)
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      const responseHeaders = { ...details.responseHeaders };
+      if (details.resourceType === "mainFrame") {
+        responseHeaders["Content-Security-Policy"] = [
+          "default-src 'self' http://127.0.0.1:* http://localhost:* data: blob:; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://127.0.0.1:* http://localhost:*; " +
+          "style-src 'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:* https://fonts.googleapis.com; " +
+          "font-src 'self' data: http://127.0.0.1:* http://localhost:* https://fonts.gstatic.com; " +
+          "img-src 'self' data: blob: http://127.0.0.1:* http://localhost:* https:; " +
+          "connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* https:;"
+        ];
+      }
+      callback({ responseHeaders });
+    });
+  }
+
   ensureBundledSkills();
-  // Register global summon shortcut: Ctrl + Shift + D
+
+  // Register global summon shortcut: Ctrl + Shift + D (P2-5 检查注册状态)
   try {
-    globalShortcut.register("CommandOrControl+Shift+D", () => {
+    const regOk = globalShortcut.register("CommandOrControl+Shift+D", () => {
       if (mainWindow) {
         if (mainWindow.isVisible() && mainWindow.isFocused()) {
           mainWindow.hide();
@@ -1394,25 +1558,24 @@ app.whenReady().then(async () => {
         }
       }
     });
+    if (!regOk) {
+      console.warn("[dsh-desktop] Global shortcut Ctrl+Shift+D registration failed (possibly occupied by another app)");
+    }
   } catch (err) {
     console.warn("Global shortcut register failed:", err.message);
   }
 
-  // 启动前先自愈检查：终结此前残留的任何 dsh 孤儿进程，确保纯净拉起当前最高版本内核
-  cleanupOrphanBackend(WEB_PORT);
+  // 启动前先清扫剪贴板临时图片目录
+  cleanupClipboardTemp();
 
-  // 启动前强力自愈：终结此前任何残留的旧后端，确保必须通过 spawnBackend 纯净拉起注入了 network-shim 的最新内核
-  cleanupOrphanBackend(WEB_PORT);
-
-  // 若端口仍被占用，短暂停顿等待系统回收
-  let retries = 0;
-  while ((await portInUse(WEB_PORT)) && retries < 5) {
-    cleanupOrphanBackend(WEB_PORT);
-    await new Promise((r) => setTimeout(r, 300));
-    retries++;
+  // 端口动态协商与漂移预检：若 3080 被占用且不可回收，自动向上漂移寻找空闲端口 (P0-1)
+  try {
+    await acquirePort(3080, 10);
+  } catch (err) {
+    console.error("[dsh-desktop] Failed to acquire port:", err);
   }
 
-  console.info("[dsh-desktop] Spawning clean DSH Web Backend with network shim...");
+  console.info(`[dsh-desktop] Spawning clean DSH Web Backend on port ${WEB_PORT} with network shim...`);
   spawnBackend();
   const started = await waitForWeb(STARTUP_TIMEOUT_MS);
 
@@ -1439,14 +1602,17 @@ app.on("before-quit", () => {
 
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
+  cleanupClipboardTemp();
   stopBackendIfOurs();
 });
 
 app.on("window-all-closed", () => {
+  cleanupClipboardTemp();
   stopBackendIfOurs();
   app.quit();
 });
 
 process.on("exit", () => {
+  cleanupClipboardTemp();
   stopBackendIfOurs();
 });

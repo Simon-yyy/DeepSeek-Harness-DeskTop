@@ -26,6 +26,8 @@
 [DeepSeek Harness (dsh)](https://github.com/deepseek-ai/deepseek-harness) 是 DeepSeek 官方出品的强大 Agent 编程框架。默认情况下它以命令行和浏览器网页形式运行，而 **DSH Desktop** 为其封装了类似 Cursor / VS Code 的沉浸式桌面客户端体验：
 
 - 🖥️ **原生沉浸式窗口**：告别浏览器标签页，拥有独立的 Windows 任务栏常驻、托盘集成与优雅的深浅色窗口体验。
+- 🛡️ **高可用与动态端口自愈**：内置动态端口避让引擎，默认 3080 端口冲突时毫秒级自动漂移（3081+）；配合父子进程管道看门狗与白屏自愈重试，彻底杜绝僵尸进程与加载白屏。
+- 🔐 **系统级 DPAPI 凭据安全**：集成 Windows Data Protection API (DPAPI) 底层硬件级加密存储，API Key 与敏感密钥严格实施本地文件权限隔离与安全存储。
 - 🖼️ **原生图片粘贴与视觉直通 (ModLens)**：输入框支持 **Ctrl + V 直接粘贴剪贴板截图** 或 **直接拖入图片**，底层自动拦截并转换为本地临时路径，彻底消除“模型不支持图片附件”的报错。
 - 🤫 **全静默后台执行**：调用终端工具与命令行时全面静默化（`windowsHide: true`），彻底告别 AI 对话过程中频繁闪烁弹出的黑色 CMD 控制台黑框。
 - ⚡ **Auto 智能自主模式**：内置 `@nanmicoder/dsh-auto-mode`，常规代码读写、构建测试全自动无感流转，涉及删库或破坏性 Git 变更时智能拦截与单次确认。
@@ -38,7 +40,7 @@
 
 ### 方式 1：直接下载安装包（推荐普通用户）
 1. 前往本仓库的 [Releases](../../releases) 页面；
-2. 下载最新的 `DSH Desktop Setup 1.0.0.exe`；
+2. 下载最新的 `DSH Desktop Setup 1.2.4.exe`；
 3. 双击完成安装，桌面和开始菜单将自动生成 **【DSH Desktop】** 快捷方式；
 4. 双击打开即可自动启动后台服务并进入主界面。
 
@@ -222,16 +224,19 @@ npx @liustack/modlens doctor
 如果你想对客户端进行二次开发或自己打包 Windows 安装包：
 
 ```bash
-# 1. 生成高分辨率应用图标
+# 1. 运行自动化单元测试（零外部依赖，覆盖端口探测、版本比较与内核矩阵）
+npm test
+
+# 2. 生成高分辨率应用图标
 npm run build:icon
 
-# 2. 打包生成 Windows 安装包（输出到 release/ 目录）
+# 3. 打包生成 Windows 安装包（输出到 release/ 目录）
 npm run dist
 
-# 3. 自动化版本发布与归档（自动更新版本号、哈希校验码与更新日志）
-npm run release:patch   # 发布补丁版本 (1.0.0 -> 1.0.1)
-npm run release:minor   # 发布次版本 (1.0.0 -> 1.1.0)
-npm run release:major   # 发布主版本 (1.0.0 -> 2.0.0)
+# 4. 自动化版本发布与归档（自动更新版本号、哈希校验码与更新日志）
+npm run release:patch   # 发布补丁版本 (1.2.4 -> 1.2.5)
+npm run release:minor   # 发布次版本 (1.2.4 -> 1.3.0)
+npm run release:major   # 发布主版本 (1.2.4 -> 2.0.0)
 ```
 
 ---
@@ -240,18 +245,29 @@ npm run release:major   # 发布主版本 (1.0.0 -> 2.0.0)
 
 ```text
 dsh-desktop/
-├── build/                # 应用构建资源
+├── build/                # 应用构建资源与高分辨率图标
 │   ├── icon-source.svg   # 官方矢量图标源文件
-│   └── icon.ico          # 多分辨率 Windows 图标 (.ico)
-├── scripts/              # 自动化构建脚本
-│   └── release.mjs       # 自动化发布流水线与 Release Notes 生成器
-├── main.js               # Electron 主进程 (生命周期、跨平台路径探测、安全拦截)
-├── preload.js            # 预加载脚本 (剪贴板图片拦截与临时文件回填)
-├── afterPack.js          # 打包后钩子 (注入高清晰度应用图标)
-├── make-icon.mjs         # 鲸鱼图标多尺寸渲染生成工具
-├── package.json          # 项目元数据与打包配置
-├── CHANGELOG.md          # 版本更新历史记录
-├── LICENSE               # MIT 开源授权协议
+│   └── icon.ico          # Windows 多尺寸格式图标
+├── contexts/             # 架构上下文与模型字典
+│   └── context.md        # 完整系统架构设计、IPC 契约与稳定性规约
+├── src/                  # 核心工程解耦源码
+│   └── main/
+│       └── utils/
+│           ├── compat.js # 官方内核大版本兼容性检查矩阵
+│           ├── port.js   # 动态端口探测与自动避让分配引擎
+│           └── version.js# Semver 语义化版本解析与比较
+├── test/                 # 自动化测试套件 (原生 node:test)
+│   ├── compat.test.js    # 内核版本兼容测试
+│   ├── port.test.js      # 端口可用性与递增分配测试
+│   └── version.test.js   # 核心 Semver 比较与边界测试
+├── scripts/              # 自动化发布流水线
+│   └── release.mjs       # Release Notes 生成与发布脚本
+├── main.js               # Electron 主进程 (生命周期、DPAPI 加密、CSP、看门狗监控)
+├── preload.js            # 预加载脚本 (UI 增强、设置扩展、安全 IPC 桥接)
+├── network-shim.js       # 网络注入与父子进程看门狗自毁垫片
+├── package.json          # 项目依赖、构建白名单配置与脚本
+├── CHANGELOG.md          # 详细版本发布与更新记录
+├── MEMORY.md             # 架构决策与反直觉经验知识库
 └── README.md             # 完整中英文项目说明文档
 ```
 

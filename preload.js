@@ -1218,10 +1218,22 @@ function showAboutModal() {
         </div>
       </div>
 
-      <!-- 底部内核版本 -->
-      <div style="padding-top: 14px; border-top: 1px solid ${borderColor}; font-size: 11px; opacity: 0.65; display: flex; justify-content: space-between; gap: 8px;">
-        <div>官方内核包：<strong>@deepseek-ai/dsh@${cachedAppInfo.kernelVersion || '0.1.1-rc.2'}</strong></div>
-        <div>桌面环境：Node ${cachedAppInfo.nodeVersion || '20'} · Electron ${cachedAppInfo.electronVersion || '33'}</div>
+      <!-- 底部内核版本与诊断导出 (P1-5 & P3-1) -->
+      <div style="padding-top: 14px; border-top: 1px solid ${borderColor}; font-size: 11px; opacity: 0.75; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <div>
+          <div>官方内核：<strong>@deepseek-ai/dsh@${cachedAppInfo.kernelVersion || '0.1.1-rc.2'}</strong></div>
+          <div style="margin-top: 2px; opacity: 0.8;">环境：Node ${cachedAppInfo.nodeVersion || '20'} · Electron ${cachedAppInfo.electronVersion || '33'} · 端口 ${cachedAppInfo.port || '3080'}</div>
+        </div>
+        <button id="dsh-modal-copy-diag-btn" style="
+          padding: 5px 10px;
+          background: ${itemBg};
+          color: inherit;
+          border: 1px solid ${borderColor};
+          border-radius: 6px;
+          font-size: 11px;
+          cursor: pointer;
+          transition: all 0.2s;
+        " title="复制全量诊断日志供问题排查">📋 复制诊断信息</button>
       </div>
     </div>
   `;
@@ -1231,6 +1243,20 @@ function showAboutModal() {
   const closeModal = () => { overlay.style.display = "none"; };
   overlay.querySelector("#dsh-modal-close-btn").addEventListener("click", closeModal);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+
+  // 复制诊断日志
+  const copyDiagBtn = overlay.querySelector("#dsh-modal-copy-diag-btn");
+  if (copyDiagBtn) {
+    copyDiagBtn.addEventListener("click", () => {
+      const diag = cachedAppInfo.diagnosticText || `DSH Desktop v${cachedAppInfo.version || '1.2.3'} | Kernel: ${cachedAppInfo.kernelVersion} | Node: ${cachedAppInfo.nodeVersion} | Port: ${cachedAppInfo.port || 3080}`;
+      navigator.clipboard.writeText(diag).then(() => {
+        copyDiagBtn.innerText = "✅ 已复制";
+        setTimeout(() => { copyDiagBtn.innerText = "📋 复制诊断信息"; }, 1500);
+      }).catch(() => {
+        alert("系统诊断信息:\n" + diag);
+      });
+    });
+  }
 
   // 客户端检查更新
   const checkAppBtn = overlay.querySelector("#dsh-modal-check-app-update-btn");
@@ -1782,7 +1808,7 @@ function showModelConfigModal() {
       const m = credsText.match(reg);
       if (m) val = m[1].trim();
     }
-    // 2. 双保险：若未读取到，立即从 LocalStorage 镜像恢复
+    // 2. 双保险：若未读取到，尝试从 LocalStorage 镜像恢复
     if (!val) {
       try {
         val = localStorage.getItem("dsh_key_" + envKey) || "";
@@ -1790,17 +1816,7 @@ function showModelConfigModal() {
         if (val && credsFile && fs.existsSync(credsFile)) {
           setApiKeyToCreds(envKey, val);
           fs.writeFileSync(credsFile, credsText, "utf8");
-        }
-      } catch (e) {}
-    }
-    // 3. 针对 agent-router，若依然为空，赋予已知的默认密钥
-    if (!val && envKey === "AGENT_ROUTER_API_KEY") {
-      val = "sk-kZ1XXUmfQhMRw3DtNvK7wQkUzDZDNus2Q8R3nudMdgUGkkts";
-      try {
-        localStorage.setItem("dsh_key_AGENT_ROUTER_API_KEY", val);
-        if (credsFile && fs.existsSync(credsFile)) {
-          setApiKeyToCreds(envKey, val);
-          fs.writeFileSync(credsFile, credsText, "utf8");
+          try { fs.chmodSync(credsFile, 0o600); } catch (_e) {}
         }
       } catch (e) {}
     }
@@ -2963,6 +2979,7 @@ function showModelConfigModal() {
         try {
           if (fs.existsSync(credsFile)) {
             fs.writeFileSync(credsFile, credsText, "utf8");
+            try { fs.chmodSync(credsFile, 0o600); } catch (_e) {}
           }
 
           if (fs.existsSync(settingsFile)) {
@@ -3123,22 +3140,45 @@ function injectCustomTabsIntoSettings() {
   const alreadyHasFeedback = Array.from(targetContainer.querySelectorAll("*")).some(el => (el.textContent || "").trim().includes("问题反馈"));
   const alreadyHasAbout = Array.from(targetContainer.querySelectorAll("*")).some(el => (el.textContent || "").trim().includes("关于"));
 
-  // 辅助函数：创建统一外观的侧边栏 Tab 项
+  // 辅助函数：创建统一外观的侧边栏 Tab 项（彻底杜绝选中态高亮污染）
   function createSidebarTab(id, label, iconSvg, onClick) {
-    // 优先克隆通用设置按钮以保持 100% 原生尺寸、类名和排版
-    let tab = generalBtn.cloneNode(true);
+    // 优先寻找一个当前未激活的原生 Tab 作为克隆模板，杜绝继承“通用设置”的高亮激活底色
+    const allButtons = Array.from(navList.querySelectorAll("button, [role='tab'], div[role='button']"));
+    const inactiveTemplate = allButtons.find(b => {
+      const t = (b.textContent || "").trim();
+      const isCustom = b.hasAttribute("data-dsh-custom-tab");
+      const isSelected = b.getAttribute("aria-selected") === "true" ||
+                         b.getAttribute("data-state") === "active" ||
+                         b.classList.contains("active");
+      return !isCustom && !isSelected && t && !t.includes("通用设置");
+    }) || generalBtn;
+
+    let tab = inactiveTemplate.cloneNode(true);
     tab.removeAttribute("id");
-    tab.className = generalBtn.className;
     tab.setAttribute("data-dsh-custom-tab", id);
     tab.setAttribute("role", "tab");
     tab.setAttribute("aria-selected", "false");
+    if (tab.hasAttribute("data-state")) {
+      tab.setAttribute("data-state", "inactive");
+    }
+
+    // 剔除任何可能残留的高亮激活类名
+    Array.from(tab.classList).forEach(cls => {
+      if (cls.includes("active") || cls.includes("selected") || cls.includes("orange") || cls.includes("accent")) {
+        tab.classList.remove(cls);
+      }
+    });
+
+    // 强制重置为纯净未激活态：默认完全透明
+    tab.style.backgroundColor = "transparent";
+    tab.style.color = "inherit";
     tab.style.cursor = "pointer";
     tab.style.display = "flex";
     tab.style.alignItems = "center";
     tab.style.width = "100%";
     tab.style.margin = "2px 0";
     tab.style.userSelect = "none";
-    tab.style.transition = "all 0.15s ease";
+    tab.style.transition = "background-color 0.15s ease, color 0.15s ease";
 
     // 注入图标与文本
     tab.innerHTML = `
