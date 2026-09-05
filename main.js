@@ -19,7 +19,7 @@ process.on("uncaughtException", (err) => {
       "DSH Desktop 运行异常",
       `应用程序遇到未捕获的错误:\n${err.message || String(err)}\n\n堆栈信息:\n${(err.stack || "").slice(0, 500)}`
     );
-  } catch {}
+  } catch (_e) {}
 });
 
 process.on("unhandledRejection", (reason) => {
@@ -360,7 +360,7 @@ function readPackageVersion(binPath) {
       }
       dir = path.dirname(dir);
     }
-  } catch {
+  } catch (_e) {
     // ignore
   }
   return null;
@@ -653,7 +653,7 @@ function resolveDshBin() {
           best = c;
           bestTime = st.mtimeMs;
         }
-      } catch { /* ignore */ }
+      } catch (_e) { /* ignore */ }
     }
     return { best, bestVer, bestTime };
   };
@@ -671,7 +671,7 @@ function resolveDshBin() {
   for (const npxRoot of cacheRoots) {
     if (!fs.existsSync(npxRoot)) continue;
     let dirs;
-    try { dirs = fs.readdirSync(npxRoot); } catch { continue; }
+    try { dirs = fs.readdirSync(npxRoot); } catch (_e) { continue; }
     for (const dir of dirs) {
       const c = path.join(npxRoot, dir, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
       if (fs.existsSync(c)) npxCandidates.push(c);
@@ -715,7 +715,7 @@ function cleanupOrphanBackend(port) {
     const lines = netstat.stdout.split(/\r?\n/);
     const pids = new Set();
     for (const line of lines) {
-      if (line.includes(`:${port}`) && line.includes("LISTENING")) {
+      if (line.includes(`:${port}`)) {
         const parts = line.trim().split(/\s+/);
         const pid = parts[parts.length - 1];
         if (pid && /^\d+$/.test(pid) && pid !== "0") {
@@ -724,15 +724,14 @@ function cleanupOrphanBackend(port) {
       }
     }
     for (const pid of pids) {
-      let cmdLine = "";
-      const ps = spawnSync("powershell", ["-NoProfile", "-Command", `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`], { encoding: "utf8", windowsHide: true });
-      if (ps.status === 0 && ps.stdout) {
-        cmdLine = ps.stdout;
-      }
-      if (/node(\.exe)?/i.test(cmdLine) && /dsh/i.test(cmdLine)) {
-        console.info(`[dsh-desktop] Detected stale DSH orphan process (PID: ${pid}) on port ${port}, terminating...`);
-        spawnSync("taskkill", ["/pid", pid, "/F", "/T"], { windowsHide: true });
-      }
+      try {
+        const ps = spawnSync("powershell", ["-NoProfile", "-Command", `(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).ProcessName`], { encoding: "utf8", windowsHide: true });
+        const pName = (ps.stdout || "").trim().toLowerCase();
+        if (pName.includes("node") || pName.includes("electron") || pName.includes("dsh")) {
+          console.info(`[dsh-desktop] Terminating stale backend process (PID: ${pid}, Name: ${pName}) on port ${port}...`);
+          spawnSync("taskkill", ["/pid", pid, "/F", "/T"], { windowsHide: true });
+        }
+      } catch (e) {}
     }
   } catch (e) {
     console.warn("[dsh-desktop] cleanupOrphanBackend warning:", e.message);
@@ -772,16 +771,14 @@ function sanitizeCredentials() {
     const credPath = path.join(app.getPath("home"), ".dsh", ".credentials.yaml");
     if (!fs.existsSync(credPath)) return;
     const raw = fs.readFileSync(credPath, "utf8");
-    if (raw.includes("refs:") || raw.includes("records:") || /^version:\s*\d+/m.test(raw)) {
-      // 提取 API Keys
-      const deepseekKey = raw.match(/DEEPSEEK_API_KEY:\s*["']?([^"'\s]+)/)?.[1];
-      const bigmodelKey = raw.match(/BIGMODEL_API_KEY:\s*["']?([^"'\s]+)/)?.[1];
-      let clean = "";
-      if (deepseekKey) clean += `DEEPSEEK_API_KEY: "${deepseekKey}"\n`;
-      if (bigmodelKey) clean += `BIGMODEL_API_KEY: "${bigmodelKey}"\n`;
-      if (clean) {
-        fs.writeFileSync(credPath, clean, "utf8");
-        console.info("[dsh-desktop] Auto-healed .credentials.yaml to standard flat format");
+    // 自动预热全量 API Key 到 process.env，确保官方内核 inherited process environment 具备最高优先级直达生效
+    const reg = /([A-Z0-9_]+_API_KEY):\s*["']?([^"'\r\n]+)["']?/g;
+    let m;
+    while ((m = reg.exec(raw)) !== null) {
+      const k = m[1].trim();
+      const v = m[2].trim();
+      if (k && v) {
+        process.env[k] = v;
       }
     }
   } catch (e) {
@@ -958,6 +955,30 @@ function spawnBackend() {
   if (process.env.DSH_HOME) env.DSH_HOME = process.env.DSH_HOME;
   env.DSH_BUNDLED_SKILL_DIR = path.join(app.getPath("home"), ".dsh", "skills");
 
+  // 全局网络兼容垫片：同步写入到用户的真实物理磁盘 ~/.dsh/network-shim.js
+  // 彻底避免外部原生 node.exe 无法读取 app.asar 虚拟路径的问题，且通过真实物理路径挂载
+  let activeShimPath = null;
+  try {
+    const dshDir = path.join(app.getPath("home"), ".dsh");
+    if (!fs.existsSync(dshDir)) fs.mkdirSync(dshDir, { recursive: true });
+    const targetShim = path.join(dshDir, "network-shim.js");
+
+    const shimCandidates = [
+      process.resourcesPath ? path.join(process.resourcesPath, "app.asar.unpacked", "network-shim.js") : null,
+      path.join(__dirname, "network-shim.js"),
+      process.resourcesPath ? path.join(process.resourcesPath, "network-shim.js") : null,
+    ].filter(Boolean);
+    const srcShim = shimCandidates.find((p) => fs.existsSync(p));
+    if (srcShim) {
+      const shimCode = fs.readFileSync(srcShim, "utf8");
+      fs.writeFileSync(targetShim, shimCode, "utf8");
+      activeShimPath = targetShim;
+      console.info("[dsh-desktop] Synced network-shim to physical path:", activeShimPath);
+    }
+  } catch (err) {
+    console.warn("[dsh-desktop] Failed to sync network-shim to ~/.dsh:", err.message);
+  }
+
   const nodeBin = resolveNode();
   const dshBin = resolveDshBin();
   let child;
@@ -971,7 +992,8 @@ function spawnBackend() {
     if (nodeBin === process.execPath) {
       env.ELECTRON_RUN_AS_NODE = "1";
     }
-    child = spawn(nodeBin, [dshBin, "web", "--no-open"], {
+    const nodeArgs = activeShimPath ? ["-r", activeShimPath, dshBin, "web", "--no-open"] : [dshBin, "web", "--no-open"];
+    child = spawn(nodeBin, nodeArgs, {
       cwd,
       env,
       stdio: "pipe",
@@ -991,7 +1013,11 @@ function spawnBackend() {
           currentAuthUrl = match[1].trim();
           console.info("[dsh-desktop] Captured Kernel Auth URL:", currentAuthUrl);
           if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.loadURL(currentAuthUrl).catch(() => {});
+            const curUrl = mainWindow.webContents.getURL();
+            // 仅当窗口当前尚未载入有效页面（如空白页）时才初次加载，避免触发二次重复刷新
+            if (!curUrl || curUrl === "about:blank" || curUrl.startsWith("data:")) {
+              mainWindow.loadURL(currentAuthUrl).catch(() => {});
+            }
           }
         }
       }
@@ -1033,7 +1059,7 @@ function stopBackendIfOurs() {
           backendProc.kill("SIGKILL");
         }
       }
-    } catch { /* ignore */ }
+    } catch (_e) { /* ignore */ }
   }
   backendProc = null;
   backendSpawnedByUs = false;
@@ -1187,21 +1213,10 @@ function createTray(appIcon) {
       {
         label: "新建会话",
         click: () => {
-          if (mainWindow) {
+          if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.show();
             mainWindow.focus();
-            mainWindow.loadURL(currentAuthUrl || WEB_URL);
-
-  // 插件加载临时竞争态自愈重试
-  mainWindow.webContents.on("did-finish-load", () => {
-    mainWindow.webContents.executeJavaScript(`
-      (function() {
-        if (document.body && document.body.innerText && document.body.innerText.includes("Failed to load plugins")) {
-          setTimeout(function() { window.location.reload(); }, 600);
-        }
-      })()
-    `).catch(() => {});
-  });
+            mainWindow.loadURL(currentAuthUrl || WEB_URL).catch(() => {});
           }
         },
       },
@@ -1319,7 +1334,7 @@ function createWindow() {
   // Test hook: DSH_DESKTOP_TEST=1
   if (process.env.DSH_DESKTOP_TEST === "1") {
     const logPath = process.env.DSH_DESKTOP_TEST_LOG || path.join(app.getPath("temp"), "dsh-desktop-test.log");
-    const log = (msg) => { try { fs.appendFileSync(logPath, `${new Date().toISOString()} ${msg}\n`); } catch { /* ignore */ } };
+    const log = (msg) => { try { fs.appendFileSync(logPath, `${new Date().toISOString()} ${msg}\n`); } catch (_e) { /* ignore */ } };
     log(`createWindow: loading ${WEB_URL}`);
     mainWindow.webContents.on("did-finish-load", () => {
       log(`did-finish-load: ${mainWindow.webContents.getURL()}`);
@@ -1342,7 +1357,7 @@ function createWindow() {
       if (parsed.origin === WEB_URL) {
         return { action: "allow" };
       }
-    } catch {}
+    } catch (_e) {}
     shell.openExternal(url);
     return { action: "deny" };
   });
@@ -1386,15 +1401,20 @@ app.whenReady().then(async () => {
   // 启动前先自愈检查：终结此前残留的任何 dsh 孤儿进程，确保纯净拉起当前最高版本内核
   cleanupOrphanBackend(WEB_PORT);
 
-  let started = false;
-  if (await portInUse(WEB_PORT)) {
-    console.info(`dsh web already running on ${WEB_PORT}, reusing it`);
-    started = true;
-  } else {
-    console.info("spawning dsh web backend...");
-    spawnBackend();
-    started = await waitForWeb(STARTUP_TIMEOUT_MS);
+  // 启动前强力自愈：终结此前任何残留的旧后端，确保必须通过 spawnBackend 纯净拉起注入了 network-shim 的最新内核
+  cleanupOrphanBackend(WEB_PORT);
+
+  // 若端口仍被占用，短暂停顿等待系统回收
+  let retries = 0;
+  while ((await portInUse(WEB_PORT)) && retries < 5) {
+    cleanupOrphanBackend(WEB_PORT);
+    await new Promise((r) => setTimeout(r, 300));
+    retries++;
   }
+
+  console.info("[dsh-desktop] Spawning clean DSH Web Backend with network shim...");
+  spawnBackend();
+  const started = await waitForWeb(STARTUP_TIMEOUT_MS);
 
   if (!started) {
     dialog.showErrorBox(

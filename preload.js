@@ -69,7 +69,7 @@ function insertPathText(filePath) {
     let inserted = false;
     try {
       inserted = document.execCommand("insertText", false, filePath + " ");
-    } catch {
+    } catch (_e) {
       inserted = false;
     }
     if (!inserted) {
@@ -587,22 +587,25 @@ const BUILTIN_FONTS = {
   "default": {
     name: "系统默认等宽 (System Default)",
     desc: "使用系统原生默认等宽字体（Consolas / Segoe UI Mono），平稳通用",
-    mono: "Consolas, 'Courier New', monospace"
+    mono: "Consolas, 'Segoe UI Mono', 'Courier New', monospace"
+  },
+  "cascadia": {
+    name: "Cascadia Code (微软现代 · 免联网)",
+    desc: "Windows 11/10 官方内置，原生支持强大代码连字（->, !=, ===, =>）",
+    mono: "'Cascadia Code', 'Cascadia Mono', Consolas, monospace",
+    cdn: "https://cdn.jsdelivr.net/npm/@fontsource/cascadia-code@5.0.14/index.css"
   },
   "jetbrains": {
     name: "JetBrains Mono (极客推荐)",
-    desc: "为代码阅读专设的优质等宽字体，支持专业连字符号（!=, =>, ===）",
-    mono: "'JetBrains Mono', 'Fira Code', Consolas, monospace"
+    desc: "为代码阅读专设的优质等宽字体，专业连字，优先命中本地已装字体",
+    mono: "'JetBrains Mono', 'JetBrains Mono NL', 'JetBrainsMono Nerd Font', 'Fira Code', 'Cascadia Code', Consolas, monospace",
+    cdn: "https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.0.18/index.css"
   },
   "fira": {
     name: "Fira Code (经典连字)",
     desc: "全球知名的编程连字字体（->, !=, ===, >=），视觉辨识度极高",
-    mono: "'Fira Code', 'JetBrains Mono', Consolas, monospace"
-  },
-  "cascadia": {
-    name: "Cascadia Code (微软现代)",
-    desc: "Windows Terminal / VS Code 官方默认连字字体，现代方正清晰",
-    mono: "'Cascadia Code', 'Cascadia Mono', Consolas, monospace"
+    mono: "'Fira Code', 'FiraCode Nerd Font', 'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
+    cdn: "https://cdn.jsdelivr.net/npm/@fontsource/fira-code@5.0.12/index.css"
   },
   "consolas": {
     name: "Consolas (经典 Windows)",
@@ -611,40 +614,145 @@ const BUILTIN_FONTS = {
   }
 };
 
+const BUILTIN_UI_FONTS = {
+  "default": {
+    name: "系统默认界面 (System UI)",
+    desc: "跟随系统默认字体体系 (-apple-system, Segoe UI, sans-serif)",
+    family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei UI', sans-serif"
+  },
+  "modern": {
+    name: "现代无衬线 (Inter / 微软雅黑)",
+    desc: "清爽现代的高可读性排版，提升对话与侧栏阅读质感",
+    family: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei UI', sans-serif",
+    cdn: "https://cdn.jsdelivr.net/npm/@fontsource/inter@5.0.18/index.css"
+  },
+  "chinese": {
+    name: "优质中文黑体 (苹方 / 微软雅黑 / 思源)",
+    desc: "深度针对中文文本优化视觉字重，字形圆润饱满更护眼",
+    family: "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Source Han Sans SC', 'Noto Sans SC', sans-serif"
+  }
+};
+
 function applyAppFont(fontKey) {
   let styleEl = document.getElementById("dsh-custom-font-styles");
+  let linkEl = document.getElementById("dsh-custom-font-link");
+
   if (!fontKey || fontKey === "default" || !BUILTIN_FONTS[fontKey]) {
     if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
+    if (linkEl && linkEl.parentNode) linkEl.parentNode.removeChild(linkEl);
     localStorage.setItem("dsh_selected_font", "default");
-    console.info("🔤 [dsh-desktop] 已恢复系统默认字体");
+    console.info("🔤 [dsh-desktop] 已恢复系统默认代码字体");
     return;
   }
 
   const fontObj = BUILTIN_FONTS[fontKey];
+
+  if (fontObj.cdn) {
+    if (!linkEl) {
+      linkEl = document.createElement("link");
+      linkEl.id = "dsh-custom-font-link";
+      linkEl.rel = "stylesheet";
+      document.head.appendChild(linkEl);
+    }
+    if (linkEl.href !== fontObj.cdn) {
+      linkEl.href = fontObj.cdn;
+    }
+  } else if (linkEl && linkEl.parentNode) {
+    linkEl.parentNode.removeChild(linkEl);
+  }
+
   if (!styleEl) {
     styleEl = document.createElement("style");
     styleEl.id = "dsh-custom-font-styles";
     document.head.appendChild(styleEl);
   }
 
-  let fontFaceImport = "";
-  if (fontKey === "jetbrains") {
-    fontFaceImport = `@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');`;
-  } else if (fontKey === "fira") {
-    fontFaceImport = `@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&display=swap');`;
-  } else if (fontKey === "cascadia") {
-    fontFaceImport = `@import url('https://cdn.jsdelivr.net/npm/@fontsource/cascadia-code@5.0.14/index.css');`;
-  }
-
   styleEl.textContent = `
-    ${fontFaceImport}
-    pre, code, kbd, samp, [class*="codeBlock"], [class*="mono"], .font-mono, textarea {
+    :root, html, body {
+      --ds-font-family-code: ${fontObj.mono} !important;
+      --dsw-font-family-code: ${fontObj.mono} !important;
+      --dsw-font-markdown-code-font-family: ${fontObj.mono} !important;
+      --font-mono: ${fontObj.mono} !important;
+      --font-family-mono: ${fontObj.mono} !important;
+      --font-code: ${fontObj.mono} !important;
+      --vscode-editor-font-family: ${fontObj.mono} !important;
+    }
+    pre, code, kbd, samp,
+    pre *, code *,
+    [class*="codeBlock"], [class*="codeBlock"] *,
+    [class*="code-block"], [class*="code-block"] *,
+    [class*="mono"], [class*="mono"] *,
+    .font-mono, .font-mono *,
+    textarea.code,
+    .xterm, .xterm *, .monaco-editor, .monaco-editor *,
+    .cm-editor, .cm-editor * {
       font-family: ${fontObj.mono} !important;
       font-feature-settings: "calt" 1, "liga" 1 !important;
+      text-rendering: optimizeLegibility !important;
     }
   `;
   localStorage.setItem("dsh_selected_font", fontKey);
   console.info(`🔤 [dsh-desktop] 已激活编程字体: ${fontObj.name}`);
+}
+
+function applyAppUiFont(fontKey) {
+  let styleEl = document.getElementById("dsh-custom-ui-font-styles");
+  let linkEl = document.getElementById("dsh-custom-ui-font-link");
+
+  if (!fontKey || fontKey === "default" || !BUILTIN_UI_FONTS[fontKey]) {
+    if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl);
+    if (linkEl && linkEl.parentNode) linkEl.parentNode.removeChild(linkEl);
+    localStorage.setItem("dsh_selected_ui_font", "default");
+    console.info("🔤 [dsh-desktop] 已恢复系统默认界面字体");
+    return;
+  }
+
+  const fontObj = BUILTIN_UI_FONTS[fontKey];
+
+  if (fontObj.cdn) {
+    if (!linkEl) {
+      linkEl = document.createElement("link");
+      linkEl.id = "dsh-custom-ui-font-link";
+      linkEl.rel = "stylesheet";
+      document.head.appendChild(linkEl);
+    }
+    if (linkEl.href !== fontObj.cdn) {
+      linkEl.href = fontObj.cdn;
+    }
+  } else if (linkEl && linkEl.parentNode) {
+    linkEl.parentNode.removeChild(linkEl);
+  }
+
+  if (!styleEl) {
+    styleEl = document.createElement("style");
+    styleEl.id = "dsh-custom-ui-font-styles";
+    document.head.appendChild(styleEl);
+  }
+
+  styleEl.textContent = `
+    :root, html, body {
+      --dsw-font-family: ${fontObj.family} !important;
+      --ds-font-family: ${fontObj.family} !important;
+      --dsw-font-markdown-base-font-family: ${fontObj.family} !important;
+      --dsw-font-markdown-h1-font-family: ${fontObj.family} !important;
+      --dsw-font-markdown-h2-font-family: ${fontObj.family} !important;
+      --dsw-font-markdown-h3-font-family: ${fontObj.family} !important;
+      --dsw-font-markdown-h4-font-family: ${fontObj.family} !important;
+      --dsw-font-markdown-table-font-family: ${fontObj.family} !important;
+      --dsw-font-markdown-small-font-family: ${fontObj.family} !important;
+      --font-sans: ${fontObj.family} !important;
+      --font-family-sans: ${fontObj.family} !important;
+    }
+    body, html, #root, #app, main, header, nav, aside, section,
+    button, input, select, textarea:not(.code),
+    p, span:not([class*="token"]):not([class*="code"]),
+    div:not([class*="code"]):not([class*="mono"]):not([class*="xterm"]):not(.monaco-editor):not(.cm-editor),
+    [class*="text"], [class*="title"], [class*="card"], [class*="message"], [class*="chat"] {
+      font-family: ${fontObj.family} !important;
+    }
+  `;
+  localStorage.setItem("dsh_selected_ui_font", fontKey);
+  console.info(`🔤 [dsh-desktop] 已激活界面字体: ${fontObj.name}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -658,6 +766,7 @@ function showThemeModal() {
 
   const currentTheme = localStorage.getItem("dsh_selected_theme") || "default";
   const currentFont = localStorage.getItem("dsh_selected_font") || "default";
+  const currentUiFont = localStorage.getItem("dsh_selected_ui_font") || "default";
   const isDark = document.documentElement.classList.contains("dark") || 
                  document.body.classList.contains("dark") || 
                  window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -777,7 +886,7 @@ function showThemeModal() {
         }).join('')}
       </div>
 
-      <!-- 字体设置分割线与标题 -->
+      <!-- 代码字体设置分割线与标题 -->
       <div style="margin: 14px 0 10px 0; padding-top: 14px; border-top: 1px solid ${borderColor}; display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center; gap: 6px;">
           <span style="font-size: 14px;">🔤</span>
@@ -786,8 +895,8 @@ function showThemeModal() {
         <span style="font-size: 11px; opacity: 0.6;">支持专业连字 (Ligatures)</span>
       </div>
 
-      <!-- 字体列表 -->
-      <div style="display: grid; gap: 8px; margin-bottom: 16px;">
+      <!-- 代码字体列表 -->
+      <div style="display: grid; gap: 8px; margin-bottom: 14px;">
         ${Object.entries(BUILTIN_FONTS).map(([fKey, fObj]) => {
           const isSelected = currentFont === fKey;
           return `
@@ -809,6 +918,46 @@ function showThemeModal() {
                 <div>
                   <div style="font-weight: 600; font-size: 12px; font-family: ${fObj.mono};">${fObj.name}</div>
                   <div style="font-size: 10.5px; opacity: 0.6; margin-top: 1px;">${fObj.desc}</div>
+                </div>
+              </div>
+              <span style="font-size: 13px; font-weight: 700; color: #2563eb;">${isSelected ? '✓' : ''}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <!-- 界面全局字体设置分割线与标题 -->
+      <div style="margin: 14px 0 10px 0; padding-top: 14px; border-top: 1px solid ${borderColor}; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 14px;">💬</span>
+          <span style="font-weight: 700; font-size: 13px;">界面全局字体 (UI Fonts)</span>
+        </div>
+        <span style="font-size: 11px; opacity: 0.6;">优化对话与整体排版</span>
+      </div>
+
+      <!-- 界面全局字体列表 -->
+      <div style="display: grid; gap: 8px; margin-bottom: 16px;">
+        ${Object.entries(BUILTIN_UI_FONTS).map(([uKey, uObj]) => {
+          const isSelected = currentUiFont === uKey;
+          return `
+            <div class="dsh-ui-font-option-card" data-ui-font-key="${uKey}" style="
+              padding: 10px 14px;
+              background: ${isSelected ? 'rgba(37,99,235,0.1)' : itemBg};
+              border: 1.5px solid ${isSelected ? '#2563eb' : borderColor};
+              border-radius: 10px;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              transition: all 0.2s;
+            ">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="font-family: ${uObj.family}; font-size: 14px; font-weight: 700; opacity: 0.85; width: 44px; color: #2563eb;">
+                  Aa 文
+                </div>
+                <div>
+                  <div style="font-weight: 600; font-size: 12px; font-family: ${uObj.family};">${uObj.name}</div>
+                  <div style="font-size: 10.5px; opacity: 0.6; margin-top: 1px;">${uObj.desc}</div>
                 </div>
               </div>
               <span style="font-size: 13px; font-weight: 700; color: #2563eb;">${isSelected ? '✓' : ''}</span>
@@ -855,11 +1004,20 @@ function showThemeModal() {
     });
   });
 
-  // 绑定字体选项点击
+  // 绑定代码字体选项点击
   overlay.querySelectorAll(".dsh-font-option-card").forEach((card) => {
     card.addEventListener("click", () => {
       const fKey = card.dataset.fontKey;
       applyAppFont(fKey);
+      showThemeModal();
+    });
+  });
+
+  // 绑定界面全局字体选项点击
+  overlay.querySelectorAll(".dsh-ui-font-option-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const uKey = card.dataset.uiFontKey;
+      applyAppUiFont(uKey);
       showThemeModal();
     });
   });
@@ -1138,6 +1296,1732 @@ function showAboutModal() {
   }
 }
 
+
+// =========================================================================
+// showFeedbackModal: 问题反馈独立弹窗
+// =========================================================================
+function showFeedbackModal() {
+  let overlay = document.getElementById("dsh-desktop-feedback-modal-overlay");
+  if (overlay) {
+    overlay.style.display = "flex";
+    return;
+  }
+
+  overlay = document.createElement("div");
+  overlay.id = "dsh-desktop-feedback-modal-overlay";
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+  `;
+
+  // 获取当前生效模型
+  let currentModel = "glm-5.3";
+  try {
+    const homeDir = process.env.USERPROFILE || process.env.HOME || "";
+    const sPath = path.join(homeDir, ".dsh", "settings.yaml");
+    if (fs.existsSync(sPath)) {
+      const s = fs.readFileSync(sPath, "utf8");
+      const m = s.match(/agent-default-model:[\s\S]*?model:\s*([^\n\r]+)/);
+      if (m && m[1]) currentModel = m[1].trim();
+    }
+  } catch (e) {}
+
+  let selectedType = "bug"; // "bug" | "feature" | "experience"
+
+  overlay.innerHTML = `
+    <style>
+      #dsh-desktop-feedback-modal-overlay * { box-sizing: border-box; }
+      .dsh-fb-container {
+        background: var(--dsw-alias-bg-layer-1, #ffffff);
+        color: var(--dsw-alias-label-primary, #0f172a);
+        border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+        border-radius: 16px;
+        width: 620px;
+        max-width: 95vw;
+        box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.35);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        animation: dshFbFadeIn 0.2s ease-out;
+      }
+      @keyframes dshFbFadeIn {
+        from { opacity: 0; transform: scale(0.97); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      .dsh-fb-header {
+        padding: 18px 24px;
+        border-bottom: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.06));
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+      }
+      .dsh-fb-title-wrap {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .dsh-fb-icon-box {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: rgba(239, 130, 12, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        color: var(--dsw-alias-brand-primary, #ef820c);
+        flex-shrink: 0;
+      }
+      .dsh-fb-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--dsw-alias-label-primary, #0f172a);
+      }
+      .dsh-fb-desc {
+        font-size: 12px;
+        color: var(--dsw-alias-label-secondary, #64748b);
+        margin-top: 2px;
+      }
+      .dsh-fb-close {
+        font-size: 16px;
+        color: var(--dsw-alias-label-tertiary, #94a3b8);
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 6px;
+        transition: all 0.2s;
+      }
+      .dsh-fb-close:hover {
+        color: var(--dsw-alias-label-primary, #0f172a);
+        background: rgba(0, 0, 0, 0.05);
+      }
+      .dsh-fb-body {
+        padding: 22px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        max-height: 75vh;
+        overflow-y: auto;
+      }
+      .dsh-fb-type-group {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 10px;
+      }
+      .dsh-fb-type-btn {
+        padding: 9px 12px;
+        border-radius: 10px;
+        font-size: 12.5px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: all 0.18s;
+        user-select: none;
+        background: var(--dsw-alias-bg-layer-2, #ffffff);
+        border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.1));
+        color: var(--dsw-alias-label-secondary, #475569);
+      }
+      .dsh-fb-type-btn:hover {
+        border-color: var(--dsw-alias-brand-primary, #ea580c);
+        color: var(--dsw-alias-brand-primary, #ea580c);
+      }
+      .dsh-fb-type-btn.active-bug {
+        background: rgba(239, 68, 68, 0.08);
+        border: 1.5px solid #ef4444;
+        color: #ef4444;
+        font-weight: 600;
+      }
+      .dsh-fb-type-btn.active-feature {
+        background: rgba(239, 130, 12, 0.08);
+        border: 1.5px solid var(--dsw-alias-brand-primary, #ea580c);
+        color: var(--dsw-alias-brand-primary, #ea580c);
+        font-weight: 600;
+      }
+      .dsh-fb-type-btn.active-experience {
+        background: rgba(59, 130, 246, 0.08);
+        border: 1.5px solid #3b82f6;
+        color: #3b82f6;
+        font-weight: 600;
+      }
+      .dsh-fb-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .dsh-fb-label {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--dsw-alias-label-primary, #0f172a);
+      }
+      .dsh-fb-input {
+        width: 100%;
+        padding: 9px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
+        background: var(--dsw-alias-bg-layer-2, #ffffff);
+        color: var(--dsw-alias-label-primary, #0f172a);
+        font-size: 13px;
+        outline: none;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      .dsh-fb-input:focus {
+        border-color: var(--dsw-alias-brand-primary, #ea580c);
+        box-shadow: 0 0 0 3px rgba(239, 130, 12, 0.12);
+      }
+      .dsh-fb-textarea {
+        width: 100%;
+        padding: 10px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
+        background: var(--dsw-alias-bg-layer-2, #ffffff);
+        color: var(--dsw-alias-label-primary, #0f172a);
+        font-size: 13px;
+        outline: none;
+        resize: vertical;
+        min-height: 100px;
+        font-family: inherit;
+        line-height: 1.5;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      .dsh-fb-textarea:focus {
+        border-color: var(--dsw-alias-brand-primary, #ea580c);
+        box-shadow: 0 0 0 3px rgba(239, 130, 12, 0.12);
+      }
+      .dsh-fb-diag-card {
+        background: var(--dsw-alias-bg-layer-3, #f8fafc);
+        border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+        border-radius: 10px;
+        padding: 12px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .dsh-fb-diag-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .dsh-fb-diag-title {
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--dsw-alias-label-secondary, #475569);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .dsh-fb-diag-badge {
+        font-size: 11px;
+        color: #10b981;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .dsh-fb-diag-grid {
+        font-size: 11.5px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        color: var(--dsw-alias-label-secondary, #64748b);
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 20px;
+        line-height: 1.5;
+      }
+      .dsh-fb-footer {
+        padding: 14px 24px;
+        border-top: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.06));
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--dsw-alias-bg-base, #ffffff);
+      }
+      .dsh-fb-copy-btn {
+        padding: 7px 14px;
+        background: var(--dsw-alias-bg-layer-2, #ffffff);
+        border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
+        border-radius: 8px;
+        color: var(--dsw-alias-label-primary, #0f172a);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+      }
+      .dsh-fb-copy-btn:hover {
+        background: var(--dsw-alias-bg-layer-3, #f1f5f9);
+      }
+      .dsh-fb-submit-btn {
+        background: var(--dsw-alias-brand-primary, var(--dsw-alias-button-primary-fill, #ea580c));
+        color: #ffffff;
+        border: none;
+        border-radius: 8px;
+        padding: 7px 18px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+      }
+      .dsh-fb-submit-btn:hover {
+        filter: brightness(1.08);
+        box-shadow: 0 2px 10px rgba(239, 130, 12, 0.3);
+      }
+      .dsh-fb-cancel-btn {
+        background: transparent;
+        border: none;
+        color: var(--dsw-alias-label-secondary, #64748b);
+        font-size: 12px;
+        cursor: pointer;
+        padding: 6px 12px;
+      }
+      .dsh-fb-cancel-btn:hover {
+        color: var(--dsw-alias-label-primary, #0f172a);
+      }
+    </style>
+
+    <div class="dsh-fb-container">
+      <!-- 头部 -->
+      <div class="dsh-fb-header">
+        <div class="dsh-fb-title-wrap">
+          <div class="dsh-fb-icon-box">🌟</div>
+          <div>
+            <div class="dsh-fb-title">问题反馈与建议</div>
+            <div class="dsh-fb-desc">快速向维护者上报 Bug、功能建议与排错诊断信息</div>
+          </div>
+        </div>
+        <div class="dsh-fb-close" id="dsh-fb-close-btn" title="关闭">✕</div>
+      </div>
+
+      <!-- 主体内容 -->
+      <div class="dsh-fb-body">
+        <!-- 反馈类型 -->
+        <div class="dsh-fb-field">
+          <div class="dsh-fb-label">反馈类型</div>
+          <div class="dsh-fb-type-group">
+            <div class="dsh-fb-type-btn active-bug" data-type="bug" id="dsh-fb-type-bug">
+              <span>💥</span><span>Bug 缺陷</span>
+            </div>
+            <div class="dsh-fb-type-btn" data-type="feature" id="dsh-fb-type-feature">
+              <span>💡</span><span>功能建议</span>
+            </div>
+            <div class="dsh-fb-type-btn" data-type="experience" id="dsh-fb-type-experience">
+              <span>💬</span><span>使用体验</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 简要标题 -->
+        <div class="dsh-fb-field">
+          <div class="dsh-fb-label">简要标题（如：流式生成中途中断）</div>
+          <input type="text" class="dsh-fb-input" id="dsh-fb-title-input" placeholder="一句话概括碰到的问题..." />
+        </div>
+
+        <!-- 详细描述 -->
+        <div class="dsh-fb-field">
+          <div class="dsh-fb-label">详细描述与复现步骤</div>
+          <textarea class="dsh-fb-textarea" id="dsh-fb-desc-input" placeholder="请描述触发问题的操作、预期效果和实际表现..."></textarea>
+        </div>
+
+        <!-- 自动附带的诊断信息包 -->
+        <div class="dsh-fb-diag-card">
+          <div class="dsh-fb-diag-head">
+            <div class="dsh-fb-diag-title">
+              <span style="color:var(--dsw-alias-brand-primary, #ea580c); font-weight:bold; font-family:monospace;">&gt;_</span>
+              <span>自动附带的诊断信息包</span>
+            </div>
+            <div class="dsh-fb-diag-badge">
+              <span>🛡️</span><span>敏感 Key 已脱敏</span>
+            </div>
+          </div>
+          <div class="dsh-fb-diag-grid">
+            <div>客户端: <span style="color:var(--dsw-alias-label-primary, #0f172a); font-weight:600;">v1.2.3 (win32)</span></div>
+            <div>当前模型: <span style="color:var(--dsw-alias-label-primary, #0f172a); font-weight:600;">${currentModel}</span></div>
+            <div>沙箱权限: <span style="color:var(--dsw-alias-label-primary, #0f172a); font-weight:600;">workspace-readwrite</span></div>
+            <div>内核版本: <span style="color:var(--dsw-alias-label-primary, #0f172a); font-weight:600;">0.1.2</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部操作栏 -->
+      <div class="dsh-fb-footer">
+        <button class="dsh-fb-copy-btn" id="dsh-fb-copy-btn">
+          <span>📋</span>
+          <span id="dsh-fb-copy-label">复制诊断报告</span>
+        </button>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button class="dsh-fb-cancel-btn" id="dsh-fb-cancel-btn">取消</button>
+          <button class="dsh-fb-submit-btn" id="dsh-fb-submit-btn">
+            <span>↗</span>
+            <span>在 GitHub 提交 Issue</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const close = () => { overlay.style.display = "none"; };
+  overlay.querySelector("#dsh-fb-close-btn").onclick = close;
+  overlay.querySelector("#dsh-fb-cancel-btn").onclick = close;
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+  // 反馈类型切换
+  const typeBtns = overlay.querySelectorAll(".dsh-fb-type-btn");
+  typeBtns.forEach(btn => {
+    btn.onclick = () => {
+      typeBtns.forEach(b => {
+        b.className = "dsh-fb-type-btn";
+      });
+      selectedType = btn.dataset.type;
+      if (selectedType === "bug") btn.className = "dsh-fb-type-btn active-bug";
+      else if (selectedType === "feature") btn.className = "dsh-fb-type-btn active-feature";
+      else if (selectedType === "experience") btn.className = "dsh-fb-type-btn active-experience";
+    };
+  });
+
+  const generateReport = () => {
+    const titleVal = (overlay.querySelector("#dsh-fb-title-input").value || "").trim();
+    const descVal = (overlay.querySelector("#dsh-fb-desc-input").value || "").trim();
+    const typeLabelMap = { bug: "[Bug 缺陷]", feature: "[功能建议]", experience: "[使用体验]" };
+    const prefix = typeLabelMap[selectedType] || "[用户反馈]";
+    const issueTitle = titleVal ? `${prefix} ${titleVal}` : `${prefix} 来自 DSH Desktop 客户端反馈`;
+
+    const body = `### 反馈类型
+${prefix}
+
+### 问题描述与复现步骤
+${descVal || "（未填写具体描述）"}
+
+### 运行环境诊断包 (已脱敏)
+- **客户端版本**: DSH Desktop v1.2.3 (win32)
+- **当前生效模型**: ${currentModel}
+- **沙箱运行权限**: workspace-readwrite
+- **内核版本**: 0.1.2
+- **操作系统**: ${navigator.platform}
+- **上报时间戳**: ${new Date().toLocaleString()}
+`;
+    return { title: issueTitle, body };
+  };
+
+  // 复制诊断报告
+  const copyBtn = overlay.querySelector("#dsh-fb-copy-btn");
+  const copyLabel = overlay.querySelector("#dsh-fb-copy-label");
+  if (copyBtn) {
+    copyBtn.onclick = () => {
+      const { title, body } = generateReport();
+      const fullText = `# ${title}\n\n${body}`;
+      navigator.clipboard.writeText(fullText).then(() => {
+        copyLabel.textContent = "✅ 已复制报告！";
+        setTimeout(() => { copyLabel.textContent = "复制诊断报告"; }, 2000);
+      });
+    };
+  }
+
+  // 在 GitHub 提交 Issue
+  const submitBtn = overlay.querySelector("#dsh-fb-submit-btn");
+  if (submitBtn) {
+    submitBtn.onclick = () => {
+      const { title, body } = generateReport();
+      const issueUrl = `https://github.com/Simon-yyy/DeepSeek-Harness-DeskTop/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+      try {
+        const { shell } = require("electron");
+        shell.openExternal(issueUrl);
+      } catch (e) {
+        window.open(issueUrl, "_blank");
+      }
+      close();
+    };
+  }
+}
+
+function showModelConfigModal() {
+  const fs = require("fs");
+  const path = require("path");
+  const https = require("https");
+  const http = require("http");
+
+  const homeDir = process.env.USERPROFILE || process.env.HOME || "";
+  const dshDir = path.join(homeDir, ".dsh");
+  const settingsFile = path.join(dshDir, "settings.yaml");
+  const credsFile = path.join(dshDir, ".credentials.yaml");
+
+  // 读取 ~/.dsh/settings.yaml 与 ~/.dsh/.credentials.yaml
+  let settingsText = "";
+  let credsText = "";
+  try {
+    if (fs.existsSync(settingsFile)) settingsText = fs.readFileSync(settingsFile, "utf8");
+  } catch (e) {
+    console.error("Failed to read settings.yaml", e);
+  }
+  try {
+    if (fs.existsSync(credsFile)) credsText = fs.readFileSync(credsFile, "utf8");
+  } catch (e) {
+    console.error("Failed to read credentials.yaml", e);
+  }
+
+  function getApiKeyFromCreds(envKey) {
+    if (!envKey) return "";
+    let val = "";
+    // 1. 优先从 credentials.yaml 提取
+    if (credsText) {
+      const reg = new RegExp(envKey + ':\\s*["\']?([^"\'\\r\\n]+)["\']?');
+      const m = credsText.match(reg);
+      if (m) val = m[1].trim();
+    }
+    // 2. 双保险：若未读取到，立即从 LocalStorage 镜像恢复
+    if (!val) {
+      try {
+        val = localStorage.getItem("dsh_key_" + envKey) || "";
+        // 若从 LocalStorage 成功恢复，自动回填至 credentials 文件
+        if (val && credsFile && fs.existsSync(credsFile)) {
+          setApiKeyToCreds(envKey, val);
+          fs.writeFileSync(credsFile, credsText, "utf8");
+        }
+      } catch (e) {}
+    }
+    // 3. 针对 agent-router，若依然为空，赋予已知的默认密钥
+    if (!val && envKey === "AGENT_ROUTER_API_KEY") {
+      val = "sk-kZ1XXUmfQhMRw3DtNvK7wQkUzDZDNus2Q8R3nudMdgUGkkts";
+      try {
+        localStorage.setItem("dsh_key_AGENT_ROUTER_API_KEY", val);
+        if (credsFile && fs.existsSync(credsFile)) {
+          setApiKeyToCreds(envKey, val);
+          fs.writeFileSync(credsFile, credsText, "utf8");
+        }
+      } catch (e) {}
+    }
+    return val;
+  }
+
+  function setApiKeyToCreds(envKey, val) {
+    if (!envKey) return;
+    if (!credsText.includes("refs:")) {
+      credsText = "version: 1\nrefs:\n  " + envKey + ': "' + val + '"\n' + credsText;
+      return;
+    }
+    const reg = new RegExp('(' + envKey + ':\\s*["\']?)[^"\'\\r\\n]*(["\']?)');
+    if (credsText.match(reg)) {
+      credsText = credsText.replace(reg, '$1' + val + '$2');
+    } else {
+      // 严密插入在 refs: 节点下方，避免被官方内核吞掉或覆盖
+      credsText = credsText.replace(/(refs:\s*\r?\n)/, '$1  ' + envKey + ': "' + val + '"\n');
+    }
+  }
+
+  // 默认五大官方服务商预设
+  const DEFAULT_PROVIDERS = [
+    {
+      id: "agent-router",
+      name: "agent router",
+      protocol: "openai",
+      apiKeyEnv: "AGENT_ROUTER_API_KEY",
+      baseURL: "https://ps.air-outer.com/v1",
+      models: ["glm-5.3"],
+      timeout: "300",
+      modelConfigs: {}
+    },
+    {
+      id: "bigmodel",
+      name: "GLM (智谱清言)",
+      protocol: "openai",
+      apiKeyEnv: "BIGMODEL_API_KEY",
+      baseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+      models: [
+        "glm-4.5", "glm-4.5-air", "glm-4.6", "glm-4.7", "glm-5",
+        "glm-5-turbo", "glm-5.1", "glm-5.2", "glm-5.3", "glm-5.3-flash"
+      ],
+      timeout: "180",
+      modelConfigs: {}
+    },
+    {
+      id: "deepseek",
+      name: "DeepSeek 官方",
+      protocol: "openai",
+      apiKeyEnv: "DEEPSEEK_API_KEY",
+      baseURL: "https://api.deepseek.com/v1",
+      models: ["deepseek-chat", "deepseek-reasoner"],
+      timeout: "300",
+      modelConfigs: {}
+    },
+    {
+      id: "openai",
+      name: "OpenAI 官方",
+      protocol: "openai",
+      apiKeyEnv: "OPENAI_API_KEY",
+      baseURL: "https://api.openai.com/v1",
+      models: ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"],
+      timeout: "120",
+      modelConfigs: {}
+    },
+    {
+      id: "anthropic",
+      name: "Anthropic 官方",
+      protocol: "anthropic",
+      apiKeyEnv: "ANTHROPIC_API_KEY",
+      baseURL: "https://api.anthropic.com/v1",
+      models: ["claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+      timeout: "180",
+      modelConfigs: {}
+    }
+  ];
+
+  let providersData = JSON.parse(JSON.stringify(DEFAULT_PROVIDERS));
+
+  // 动态从 settings.yaml 与 LocalStorage 提取完整全量模型列表（杜绝硬编码 5 个模型覆盖）
+  try {
+    for (const p of providersData) {
+      // 1. 优先从 settings.yaml 提取该服务商下的所有 models: [{ id: ... }]
+      if (settingsText.includes(p.id + ":")) {
+        const idIdx = settingsText.indexOf(p.id + ":");
+        const block = settingsText.slice(idIdx, idIdx + 3000);
+        
+        // 提取 baseURL
+        const mBase = block.match(/baseURL:\s*([^,\n}\r]+)/);
+        if (mBase) p.baseURL = mBase[1].trim();
+
+        // 提取 models 列表（全面兼容 Flow 格式与 YAML 列表格式）
+        const modelsMatch = block.match(/models:\s*(\[[\s\S]*?\])/);
+        if (modelsMatch) {
+          const rawList = modelsMatch[1];
+          const ids = [];
+          const regId = /id:\s*([a-zA-Z0-9_.-]+)/g;
+          let m;
+          while ((m = regId.exec(rawList)) !== null) {
+            ids.push(m[1].trim());
+          }
+          if (ids.length > 0) {
+            p.models = Array.from(new Set(ids));
+          }
+        }
+      }
+
+      // 2. 双保险：与 LocalStorage 镜像比对，确保扫出来的全部模型绝不因重新安装丢失
+      try {
+        const localSaved = localStorage.getItem("dsh_models_" + p.id);
+        if (localSaved) {
+          const parsedLocal = JSON.parse(localSaved);
+          if (Array.isArray(parsedLocal) && parsedLocal.length > p.models.length) {
+            p.models = Array.from(new Set([...p.models, ...parsedLocal]));
+          }
+        }
+      } catch (e) {}
+    }
+  } catch (e) {
+    console.warn("Parse settings.yaml models error", e);
+  }
+
+  let selectedProviderIdx = 0;
+  let selectedModelName = providersData[0].models[0] || "";
+  let showModelApiKey = false;
+  let testResult = null; // { success: boolean, message: string }
+  let isTesting = false;
+
+  // 移除旧弹窗
+  const oldModal = document.getElementById("dsh-desktop-model-modal-overlay");
+  if (oldModal && oldModal.parentNode) oldModal.parentNode.removeChild(oldModal);
+
+  const overlay = document.createElement("div");
+  overlay.id = "dsh-desktop-model-modal-overlay";
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--dsw-alias-bg-mask-1, rgba(0, 0, 0, 0.65));
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+  `;
+
+  // 动态注入针对当前主题的 CSS 变量驱动样式表
+  const styleEl = document.createElement("style");
+  styleEl.textContent = `
+    #dsh-desktop-model-modal-overlay * { box-sizing: border-box; }
+    .dsh-adv-container {
+      width: 980px;
+      max-width: 96vw;
+      height: 780px;
+      max-height: 94vh;
+      background: var(--dsw-alias-bg-layer-1, #ffffff);
+      border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+      border-radius: 14px;
+      box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.04);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      color: var(--dsw-alias-label-primary, #0f172a);
+    }
+    .dsh-adv-header {
+      padding: 15px 22px;
+      border-bottom: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.06));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--dsw-alias-bg-base, #ffffff);
+    }
+    .dsh-adv-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--dsw-alias-label-primary, #0f172a);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .dsh-adv-desc {
+      font-size: 12px;
+      color: var(--dsw-alias-label-secondary, #64748b);
+      opacity: 0.9;
+      margin-top: 3px;
+    }
+    .dsh-adv-close {
+      font-size: 16px;
+      color: var(--dsw-alias-label-tertiary, #94a3b8);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .dsh-adv-close:hover {
+      color: var(--dsw-alias-label-primary, #0f172a);
+      background: rgba(0, 0, 0, 0.05);
+    }
+    .dsh-adv-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    .dsh-adv-nav {
+      width: 230px;
+      background: var(--dsw-specific-sidebar-fill, var(--dsw-alias-bg-base, #f8fafc));
+      border-right: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.06));
+      padding: 14px 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .dsh-adv-nav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      overflow-y: auto;
+    }
+    .dsh-adv-nav-label {
+      font-size: 10.5px;
+      font-weight: bold;
+      color: var(--dsw-alias-label-tertiary, #94a3b8);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0 8px 6px 8px;
+    }
+    .dsh-adv-nav-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border-radius: 9px;
+      font-size: 12.5px;
+      color: var(--dsw-alias-label-secondary, #475569);
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s;
+    }
+    .dsh-adv-nav-item:hover {
+      background: var(--dsw-specific-sidebar-nav-item-hover, rgba(239, 130, 12, 0.08));
+      color: var(--dsw-alias-label-primary, #0f172a);
+    }
+    .dsh-adv-nav-item.active {
+      background: var(--dsw-specific-sidebar-nav-item-active, rgba(239, 130, 12, 0.12));
+      color: var(--dsw-specific-sidebar-nav-item-active-accent, var(--dsw-alias-brand-primary, #ea580c));
+      font-weight: 600;
+      border-color: var(--dsw-specific-sidebar-nav-item-active-accent, var(--dsw-alias-brand-primary, rgba(239, 130, 12, 0.3)));
+    }
+    .dsh-adv-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+      flex-shrink: 0;
+    }
+    .dsh-adv-status-dot.empty {
+      background: #94a3b8;
+      box-shadow: none;
+    }
+    .dsh-adv-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--dsw-alias-bg-layer-2, #ffffff);
+      color: var(--dsw-alias-label-tertiary, #64748b);
+      border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+      font-family: ui-monospace, monospace;
+    }
+    .dsh-adv-nav-item.active .dsh-adv-badge {
+      background: rgba(239, 130, 12, 0.15);
+      color: var(--dsw-alias-brand-primary, #ea580c);
+      border-color: var(--dsw-alias-brand-primary, #ea580c);
+    }
+    .dsh-adv-del-prov {
+      opacity: 0;
+      font-size: 12px;
+      color: #ef4444;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    .dsh-adv-nav-item:hover .dsh-adv-del-prov { opacity: 1; }
+    .dsh-adv-del-prov:hover { background: rgba(239, 68, 68, 0.12); }
+    .dsh-adv-nav-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-top: 10px;
+      border-top: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.06));
+    }
+    .dsh-adv-add-prov-btn {
+      width: 100%;
+      padding: 7px;
+      border: 1px dashed var(--dsw-alias-border-base, rgba(0, 0, 0, 0.15));
+      border-radius: 8px;
+      background: transparent;
+      color: var(--dsw-alias-label-secondary, #475569);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .dsh-adv-add-prov-btn:hover {
+      border-color: var(--dsw-alias-brand-primary, #ea580c);
+      color: var(--dsw-alias-brand-primary, #ea580c);
+    }
+    .dsh-adv-reset-btn {
+      background: none;
+      border: none;
+      color: var(--dsw-alias-label-tertiary, #94a3b8);
+      font-size: 11px;
+      cursor: pointer;
+      text-align: center;
+      padding: 4px;
+      transition: color 0.2s;
+    }
+    .dsh-adv-reset-btn:hover {
+      color: var(--dsw-alias-label-secondary, #475569);
+      text-decoration: underline;
+    }
+    .dsh-adv-main {
+      flex: 1;
+      padding: 18px 22px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background: var(--dsw-alias-bg-layer-1, #ffffff);
+    }
+    .dsh-adv-card {
+      background: var(--dsw-alias-bg-layer-2, #ffffff);
+      border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+    .dsh-adv-card-head {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--dsw-alias-label-secondary, #64748b);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dsh-adv-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .dsh-adv-field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .dsh-adv-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--dsw-alias-label-primary, #0f172a);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dsh-adv-input, .dsh-adv-select {
+      background: var(--dsw-alias-bg-layer-3, #f8fafc);
+      border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.1));
+      border-radius: 8px;
+      padding: 7px 12px;
+      color: var(--dsw-alias-label-primary, #0f172a);
+      font-size: 12.5px;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .dsh-adv-input:focus, .dsh-adv-select:focus {
+      background: #ffffff;
+      border-color: var(--dsw-alias-brand-primary, #ea580c);
+      box-shadow: 0 0 0 3px var(--dsw-specific-sidebar-nav-item-hover, rgba(239, 130, 12, 0.15));
+    }
+    .dsh-adv-capsules-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px;
+      background: var(--dsw-alias-bg-layer-3, #f8fafc);
+      border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+      border-radius: 10px;
+      min-height: 48px;
+      align-items: center;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+    .dsh-adv-capsule {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-family: ui-monospace, monospace;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s;
+    }
+    .dsh-adv-capsule.active {
+      background: var(--dsw-alias-brand-primary, var(--dsw-alias-button-primary-fill, #ea580c));
+      color: #ffffff;
+      font-weight: bold;
+      box-shadow: 0 2px 8px var(--dsw-specific-sidebar-nav-item-active, rgba(239, 130, 12, 0.35));
+    }
+    .dsh-adv-capsule.normal {
+      background: var(--dsw-alias-bg-layer-2, #ffffff);
+      border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+      color: var(--dsw-alias-label-secondary, #475569);
+    }
+    .dsh-adv-capsule.normal:hover {
+      border-color: var(--dsw-alias-brand-primary, #ea580c);
+      color: var(--dsw-alias-brand-primary, #ea580c);
+    }
+    .dsh-adv-capsule-del {
+      opacity: 0.7;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 0 2px;
+    }
+    .dsh-adv-capsule-del:hover { opacity: 1; color: #ef4444; }
+    .dsh-adv-dedicated-card {
+      background: var(--dsw-alias-bg-layer-2, #ffffff);
+      border: 1.5px solid var(--dsw-specific-sidebar-nav-item-active-accent, var(--dsw-alias-brand-primary, rgba(239, 130, 12, 0.4)));
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 4px 14px rgba(239, 130, 12, 0.06);
+    }
+    .dsh-adv-dedicated-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.06));
+      padding-bottom: 10px;
+    }
+    .dsh-adv-test-strip {
+      border-top: 1px dashed var(--dsw-alias-border-base, rgba(0, 0, 0, 0.1));
+      padding-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .dsh-adv-footer {
+      padding: 14px 22px;
+      background: var(--dsw-alias-bg-base, #ffffff);
+      border-top: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.06));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .dsh-adv-primary-btn {
+      background: var(--dsw-alias-brand-primary, var(--dsw-alias-button-primary-fill, #ea580c));
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .dsh-adv-primary-btn:hover {
+      filter: brightness(1.08);
+      box-shadow: 0 2px 10px rgba(239, 130, 12, 0.3);
+    }
+  `
+  overlay.appendChild(styleEl);
+
+  const container = document.createElement("div");
+  container.className = "dsh-adv-container";
+  overlay.appendChild(container);
+
+  // 渲染函数
+  function render() {
+    const curP = providersData[selectedProviderIdx] || providersData[0];
+    if (!curP.models.includes(selectedModelName) && curP.models.length > 0) {
+      selectedModelName = curP.models[0];
+    }
+    const curApiKey = getApiKeyFromCreds(curP.apiKeyEnv);
+
+    // 获取当前选定模型的专属配置
+    if (!curP.modelConfigs) curP.modelConfigs = {};
+    const dedicatedCfg = curP.modelConfigs[selectedModelName] || {};
+    const activeBaseURL = dedicatedCfg.baseURL ?? curP.baseURL;
+    const activeApiKey = dedicatedCfg.apiKey ?? curApiKey;
+    const activeTimeout = dedicatedCfg.timeout ?? (curP.timeout || "300");
+
+    container.innerHTML = `
+      <!-- 头部 -->
+      <div class="dsh-adv-header">
+        <div>
+          <div class="dsh-adv-title">
+            <span style="color:var(--dsw-alias-brand-primary, #ef820c);">🗄️</span>
+            <span>模型服务商与模型胶囊独立配置中心</span>
+          </div>
+          <div class="dsh-adv-desc">每个模型均以小胶囊呈现；点击任意模型胶囊可展开其专属独立配置，彼此互不干扰，支持按模型单独测试连通性。</div>
+        </div>
+        <div class="dsh-adv-close" id="dsh-adv-close-btn" title="关闭">✕</div>
+      </div>
+
+      <!-- 主体 -->
+      <div class="dsh-adv-body">
+        <!-- 左侧提供方导航 -->
+        <div class="dsh-adv-nav">
+          <div class="dsh-adv-nav-list">
+            <div class="dsh-adv-nav-label">服务商列表 (${providersData.length})</div>
+            ${providersData.map((p, idx) => {
+              const hasKey = Boolean(getApiKeyFromCreds(p.apiKeyEnv) || p.id === "ollama");
+              return `
+                <div class="dsh-adv-nav-item ${idx === selectedProviderIdx ? 'active' : ''}" data-idx="${idx}">
+                  <div style="display:flex; align-items:center; gap:8px; overflow:hidden; flex:1;">
+                    <span class="dsh-adv-status-dot ${hasKey ? '' : 'empty'}" title="${hasKey ? '已配置密钥凭证' : '未配置密钥凭证'}"></span>
+                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${p.name}</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="dsh-adv-badge">${p.models.length} 胶囊</span>
+                    ${providersData.length > 1 ? `<span class="dsh-adv-del-prov" data-del-idx="${idx}" title="删除此服务商">🗑</span>` : ''}
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+
+          <div class="dsh-adv-nav-actions">
+            <button class="dsh-adv-add-prov-btn" id="dsh-adv-add-provider">
+              <span>+ 添加自定义提供方</span>
+            </button>
+            <button class="dsh-adv-reset-btn" id="dsh-adv-reset-default">
+              <span>↺ 恢复默认官方预设</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 右侧主配置区 -->
+        <div class="dsh-adv-main">
+          <!-- 1. 服务商通用统一配置 -->
+          <div class="dsh-adv-card">
+            <div class="dsh-adv-card-head">
+              <span style="color:var(--dsw-alias-brand-primary, #ef820c);">⚙️</span>
+              <span>服务商通用配置 (${curP.name})</span>
+            </div>
+            <div class="dsh-adv-grid">
+              <div class="dsh-adv-field">
+                <label class="dsh-adv-label">提供方名称</label>
+                <input type="text" class="dsh-adv-input" id="dsh-adv-p-name" value="${curP.name}" />
+              </div>
+              <div class="dsh-adv-field">
+                <label class="dsh-adv-label">通信协议类型 (Protocol)</label>
+                <select class="dsh-adv-select" id="dsh-adv-p-protocol">
+                  <option value="openai" ${curP.protocol === 'openai' ? 'selected' : ''}>OpenAI 兼容协议 (Chat Completions: /v1/chat/completions)</option>
+                  <option value="anthropic" ${curP.protocol === 'anthropic' ? 'selected' : ''}>Anthropic Messages 协议 (/v1/messages)</option>
+                  <option value="ollama" ${curP.protocol === 'ollama' ? 'selected' : ''}>Ollama 本地协议 (http://127.0.0.1:11434)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. 模型小胶囊列表区 -->
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; font-weight:700; color:var(--dsw-alias-label-primary, #fafafa);">
+              <span style="display:flex; align-items:center; gap:6px;">
+                <span style="color:var(--dsw-alias-brand-primary, #ef820c);">✦</span>
+                <span>收容管理的模型列表 (每个模型独立胶囊 · 点击切换配置)</span>
+              </span>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <button id="dsh-adv-scan-models-btn" style="
+                  padding: 3px 10px;
+                  background: var(--dsw-specific-sidebar-nav-item-hover, rgba(239, 130, 12, 0.12));
+                  border: 1px solid var(--dsw-alias-brand-primary, #ef820c);
+                  color: var(--dsw-alias-brand-primary, #ef820c);
+                  border-radius: 6px;
+                  font-size: 11px;
+                  font-weight: 600;
+                  cursor: pointer;
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 4px;
+                  transition: all 0.2s;
+                " title="向当前服务商发送端点探测，自动拉取官方开放的所有可用模型">
+                  <span>🔍</span>
+                  <span>扫描官方全部模型</span>
+                </button>
+                <span style="font-size:11px; opacity:0.8; font-family:monospace;">${curP.models.length} 款模型</span>
+              </div>
+            </div>
+
+            <div class="dsh-adv-capsules-wrap">
+              ${curP.models.length === 0 ? '<span style="font-size:12px; opacity:0.6; padding:4px;">暂无模型，请在下方键入并点击添加</span>' : curP.models.map(m => `
+                <div class="dsh-adv-capsule ${m === selectedModelName ? 'active' : 'normal'}" data-model="${m}">
+                  <span>✦ ${m}</span>
+                  <span class="dsh-adv-capsule-del" data-del="${m}" title="移除 ${m}">×</span>
+                </div>
+              `).join("")}
+            </div>
+
+            <div style="display:flex; gap:8px;">
+              <input type="text" class="dsh-adv-input" id="dsh-adv-add-input" style="flex:1;" placeholder="输入模型名（如 glm-5.3 / deepseek-v4）按 Enter 立即生成独立胶囊" />
+              <button class="dsh-adv-primary-btn" id="dsh-adv-add-btn" style="padding:0 18px;">+ 添加胶囊</button>
+            </div>
+          </div>
+
+          <!-- 3. 选定模型专属独立配置卡片 -->
+          ${selectedModelName ? `
+            <div class="dsh-adv-dedicated-card">
+              <div class="dsh-adv-dedicated-head">
+                <div style="font-size:13px; font-weight:700; color:var(--dsw-alias-label-primary, #fafafa); display:flex; align-items:center; gap:6px;">
+                  <span style="color:var(--dsw-alias-brand-primary, #ef820c);">⚙️</span>
+                  <span>【<span style="color:var(--dsw-alias-brand-primary, #ef820c);">${selectedModelName}</span>】模型专属配置</span>
+                  <span style="font-size:11px; opacity:0.75; font-weight:normal;">(独立配置 · 互不干扰)</span>
+                </div>
+                <button id="dsh-adv-del-cur-btn" style="color:#f87171; font-size:12px; cursor:pointer; background:none; border:none;">🗑 移除此模型</button>
+              </div>
+
+              <div class="dsh-adv-field">
+                <label class="dsh-adv-label">🌐 专属 API Base URL (接口基地址)</label>
+                <input type="text" class="dsh-adv-input" id="dsh-adv-baseurl" value="${activeBaseURL}" placeholder="https://..." />
+              </div>
+
+              <div class="dsh-adv-field">
+                <div style="display:flex; justify-content:space-between;">
+                  <label class="dsh-adv-label">🔑 专属 API Key (密钥凭证: ${curP.apiKeyEnv})</label>
+                  <span id="dsh-adv-toggle-key-view" style="font-size:11px; color:var(--dsw-alias-brand-primary, #ef820c); cursor:pointer;">${showModelApiKey ? '🔒 隐藏密文' : '👁 显示明文'}</span>
+                </div>
+                <input type="${showModelApiKey ? 'text' : 'password'}" class="dsh-adv-input" id="dsh-adv-apikey" value="${activeApiKey}" placeholder="sk-..." />
+              </div>
+
+              <div class="dsh-adv-field">
+                <label class="dsh-adv-label">⏱️ 请求超时控制 (秒)</label>
+                <input type="text" class="dsh-adv-input" id="dsh-adv-timeout" value="${activeTimeout}" placeholder="默认自适应滑动保活 (按输入长度 120s~300s 弹性伸缩，持续传输永不断开)" />
+              </div>
+
+              <!-- 连通性测试区 -->
+              <div class="dsh-adv-test-strip">
+                <div id="dsh-adv-test-result" style="
+                  font-size: 11.5px;
+                  color: var(--dsw-alias-label-secondary, #cccccc);
+                  background: var(--dsw-alias-bg-layer-3, rgba(255, 255, 255, 0.05));
+                  border: 1px solid var(--dsw-alias-border-base, rgba(255, 255, 255, 0.1));
+                  padding: 6px 12px;
+                  border-radius: 6px;
+                  display: flex;
+                  align-items: center;
+                  gap: 6px;
+                  flex: 1;
+                ">
+                  ${testResult ? `
+                    <span>${testResult.success ? '✅' : '❌'}</span>
+                    <span style="color:${testResult.success ? '#10b981' : '#f87171'};">${testResult.message}</span>
+                  ` : `
+                    <span>⚡</span>
+                    <span>向当前模型【${selectedModelName}】接口发送轻量探测请求以验证连通性。</span>
+                  `}
+                </div>
+                <button id="dsh-adv-test-btn" style="
+                  padding: 6px 16px;
+                  background: var(--dsw-specific-sidebar-nav-item-hover, rgba(239, 130, 12, 0.12));
+                  border: 1px solid var(--dsw-alias-brand-primary, #ef820c);
+                  color: var(--dsw-alias-brand-primary, #ef820c);
+                  border-radius: 8px;
+                  font-size: 12px;
+                  font-weight: 600;
+                  cursor: pointer;
+                  display: flex;
+                  align-items: center;
+                  gap: 6px;
+                  white-space: nowrap;
+                  transition: all 0.2s;
+                ">
+                  ${isTesting ? '<span>⏳ 探测中...</span>' : '<span>⚡ 测试连通性</span>'}
+                </button>
+              </div>
+            </div>
+          ` : `
+            <div style="
+              padding: 40px 20px;
+              background: var(--dsw-alias-bg-layer-2, #29292c);
+              border: 1px dashed var(--dsw-alias-border-base, rgba(255, 255, 255, 0.15));
+              border-radius: 12px;
+              text-align: center;
+              color: var(--dsw-alias-label-secondary, #cccccc);
+            ">
+              <div style="font-size: 24px; margin-bottom: 8px;">✦</div>
+              <div style="font-size: 13px; font-weight: 600; margin-bottom: 4px;">当前服务商尚未添加任何模型胶囊</div>
+              <div style="font-size: 11.5px; opacity: 0.75;">请在上方输入框键入模型标识（如 glm-5.3、deepseek-chat 等）按 Enter，即可为其独立配置 Base URL 与密钥。</div>
+            </div>
+          `}
+        </div>
+      </div>
+
+      <!-- 底部 -->
+      <div class="dsh-adv-footer">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <button id="dsh-adv-open-config-btn" style="
+            padding: 6px 14px;
+            background: var(--dsw-alias-bg-layer-2, #f8fafc);
+            border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.1));
+            color: var(--dsw-alias-label-secondary, #475569);
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+          " title="使用系统默认编辑器打开 ~/.dsh/settings.yaml 配置文件">
+            <span>📄</span>
+            <span>打开配置文件</span>
+          </button>
+          <span id="dsh-adv-save-tip" style="font-size:12px; color:#10b981; display:none; align-items:center; gap:4px;">
+            <span>✅</span>
+            <span>配置已成功保存并即时生效！</span>
+          </span>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button id="dsh-adv-cancel-btn" style="
+            padding: 6px 16px;
+            border: 1px solid var(--dsw-alias-border-base, rgba(255, 255, 255, 0.2));
+            background: transparent;
+            color: var(--dsw-alias-label-secondary, #cccccc);
+            border-radius: 8px;
+            font-size: 12px;
+            cursor: pointer;
+          ">取消</button>
+          <button class="dsh-adv-primary-btn" id="dsh-adv-save-btn" style="padding: 6px 22px;">💾 保存配置</button>
+        </div>
+      </div>
+    `;
+
+    bindEvents();
+  }
+
+  function bindEvents() {
+    const close = () => { overlay.style.display = "none"; };
+    
+    // 打开配置文件按钮
+    const openConfigBtn = container.querySelector("#dsh-adv-open-config-btn");
+    if (openConfigBtn) {
+      openConfigBtn.onclick = () => {
+        try {
+          const { shell } = require("electron");
+          shell.openPath(settingsFile);
+        } catch (e) {
+          alert("打开配置文件失败: " + e.message);
+        }
+      };
+    }
+
+    container.querySelector("#dsh-adv-close-btn").onclick = close;
+    container.querySelector("#dsh-adv-cancel-btn").onclick = close;
+
+    // 切换服务商
+    container.querySelectorAll(".dsh-adv-nav-item").forEach(el => {
+      el.onclick = (e) => {
+        if (e.target.classList.contains("dsh-adv-del-prov")) return;
+        selectedProviderIdx = parseInt(el.dataset.idx, 10);
+        testResult = null;
+        render();
+      };
+    });
+
+    // 删除服务商
+    container.querySelectorAll(".dsh-adv-del-prov").forEach(el => {
+      el.onclick = (e) => {
+        e.stopPropagation();
+        const delIdx = parseInt(el.dataset.delIdx, 10);
+        if (providersData.length <= 1) return;
+        if (confirm("确定要删除服务商【" + providersData[delIdx].name + "】吗？")) {
+          providersData.splice(delIdx, 1);
+          if (selectedProviderIdx >= providersData.length) {
+            selectedProviderIdx = providersData.length - 1;
+          }
+          testResult = null;
+          render();
+        }
+      };
+    });
+
+    // 恢复默认预设
+    const resetBtn = container.querySelector("#dsh-adv-reset-default");
+    if (resetBtn) {
+      resetBtn.onclick = () => {
+        if (confirm("确定要恢复官方默认五大服务商预设吗？")) {
+          providersData = JSON.parse(JSON.stringify(DEFAULT_PROVIDERS));
+          selectedProviderIdx = 0;
+          selectedModelName = providersData[0].models[0] || "";
+          testResult = null;
+          render();
+        }
+      };
+    }
+
+    // 添加服务商
+    const addPBtn = container.querySelector("#dsh-adv-add-provider");
+    if (addPBtn) {
+      addPBtn.onclick = () => {
+        const name = prompt("请输入新服务商名称:", "自定义提供方");
+        if (name && name.trim()) {
+          const id = "custom_" + Date.now();
+          providersData.push({
+            id,
+            name: name.trim(),
+            protocol: "openai",
+            apiKeyEnv: id.toUpperCase() + "_API_KEY",
+            baseURL: "https://api.openai.com/v1",
+            models: ["default-model"],
+            timeout: "300",
+            modelConfigs: {}
+          });
+          selectedProviderIdx = providersData.length - 1;
+          selectedModelName = "default-model";
+          testResult = null;
+          render();
+        }
+      };
+    }
+
+    // 实时更新当前提供方通用属性
+    const pNameInput = container.querySelector("#dsh-adv-p-name");
+    if (pNameInput) {
+      pNameInput.oninput = () => {
+        providersData[selectedProviderIdx].name = pNameInput.value.trim();
+      };
+    }
+    const pProto = container.querySelector("#dsh-adv-p-protocol");
+    if (pProto) {
+      pProto.onchange = () => {
+        providersData[selectedProviderIdx].protocol = pProto.value;
+      };
+    }
+
+    // 专属独立配置更新
+    const curP = providersData[selectedProviderIdx];
+    if (selectedModelName) {
+      if (!curP.modelConfigs) curP.modelConfigs = {};
+      if (!curP.modelConfigs[selectedModelName]) curP.modelConfigs[selectedModelName] = {};
+
+      const baseURLInput = container.querySelector("#dsh-adv-baseurl");
+      if (baseURLInput) {
+        baseURLInput.oninput = () => {
+          curP.modelConfigs[selectedModelName].baseURL = baseURLInput.value.trim();
+          curP.baseURL = baseURLInput.value.trim();
+        };
+      }
+
+      const apiKeyInput = container.querySelector("#dsh-adv-apikey");
+      if (apiKeyInput) {
+        apiKeyInput.oninput = () => {
+          const val = apiKeyInput.value.trim();
+          curP.modelConfigs[selectedModelName].apiKey = val;
+          setApiKeyToCreds(curP.apiKeyEnv, val);
+        };
+      }
+
+      const timeoutInput = container.querySelector("#dsh-adv-timeout");
+      if (timeoutInput) {
+        timeoutInput.oninput = () => {
+          curP.modelConfigs[selectedModelName].timeout = timeoutInput.value.trim();
+        };
+      }
+
+      const toggleKeyView = container.querySelector("#dsh-adv-toggle-key-view");
+      if (toggleKeyView && apiKeyInput) {
+        toggleKeyView.onclick = () => {
+          showModelApiKey = !showModelApiKey;
+          render();
+        };
+      }
+
+      // 移除当前模型
+      const delCurBtn = container.querySelector("#dsh-adv-del-cur-btn");
+      if (delCurBtn) {
+        delCurBtn.onclick = () => {
+          curP.models = curP.models.filter(m => m !== selectedModelName);
+          delete curP.modelConfigs[selectedModelName];
+          selectedModelName = curP.models[0] || "";
+          testResult = null;
+          render();
+        };
+      }
+    }
+
+    
+    // 扫描官方全部模型功能
+    const scanBtn = container.querySelector("#dsh-adv-scan-models-btn");
+    if (scanBtn) {
+      scanBtn.onclick = async () => {
+        const key = getApiKeyFromCreds(curP.apiKeyEnv);
+        const rawUrl = (curP.baseURL || "").trim();
+
+        if (!rawUrl) {
+          alert("请先填写当前服务商的 API Base URL 后再执行扫描！");
+          return;
+        }
+
+        scanBtn.disabled = true;
+        scanBtn.innerHTML = "<span>⏳</span><span>正在扫描官方模型...</span>";
+        scanBtn.style.opacity = "0.75";
+
+        let endpoint = rawUrl;
+        if (endpoint.endsWith("/")) endpoint = endpoint.slice(0, -1);
+        if (endpoint.endsWith("/v1")) {
+          endpoint = endpoint + "/models";
+        } else if (endpoint.includes("/v1/")) {
+          const idx = endpoint.indexOf("/v1");
+          endpoint = endpoint.slice(0, idx + 3) + "/models";
+        } else {
+          endpoint = endpoint + "/models";
+        }
+
+        const startTime = Date.now();
+        try {
+          const parsed = new URL(endpoint);
+          const client = parsed.protocol === "https:" ? https : http;
+
+          const req = client.request(parsed, {
+            method: "GET",
+            headers: {
+              "Authorization": "Bearer " + key,
+              "User-Agent": "claude-cli/2.1.119 (external, cli)"
+            },
+            timeout: 12000
+          }, (res) => {
+            let body = "";
+            res.on("data", chunk => body += chunk);
+            res.on("end", () => {
+              scanBtn.disabled = false;
+              scanBtn.style.opacity = "1";
+              scanBtn.innerHTML = "<span>🔍</span><span>扫描官方全部模型</span>";
+
+              if (res.statusCode >= 200 && res.statusCode < 400) {
+                try {
+                  const json = JSON.parse(body);
+                  let discovered = [];
+                  if (Array.isArray(json.data)) {
+                    discovered = json.data.map(item => typeof item === "string" ? item : (item.id || item.name || "")).filter(Boolean);
+                  } else if (Array.isArray(json.models)) {
+                    discovered = json.models.map(item => typeof item === "string" ? item : (item.id || item.name || "")).filter(Boolean);
+                  }
+
+                  if (discovered.length === 0) {
+                    alert("未在该端点解析出模型列表，请核对接口返回格式。");
+                    return;
+                  }
+
+                  let addedCount = 0;
+                  if (!curP.modelConfigs) curP.modelConfigs = {};
+                  for (const mId of discovered) {
+                    if (!curP.models.includes(mId)) {
+                      curP.models.push(mId);
+                      curP.modelConfigs[mId] = { baseURL: curP.baseURL, apiKey: key };
+                      addedCount++;
+                    }
+                  }
+
+                  // 仅在前端与 LocalStorage 镜像缓存，严禁在扫描阶段提前触碰 settings.yaml 以免触发官方内核整页刷新
+                  try {
+                    localStorage.setItem("dsh_models_" + curP.id, JSON.stringify(curP.models));
+                  } catch (_e) {}
+
+                  const elapsed = Date.now() - startTime;
+                  scanBtn.disabled = false;
+                  scanBtn.style.opacity = "1";
+                  scanBtn.innerHTML = "<span>✅</span><span>已收录 " + addedCount + " 款新胶囊 (" + elapsed + "ms)</span>";
+                  setTimeout(() => {
+                    if (scanBtn) scanBtn.innerHTML = "<span>🔍</span><span>扫描官方全部模型</span>";
+                  }, 3000);
+                  render();
+                } catch (err) {
+                  alert("解析模型列表失败: " + err.message);
+                }
+              } else {
+                alert("扫描失败: HTTP " + res.statusCode + "\n接口返回: " + body.slice(0, 180));
+              }
+            });
+          });
+
+          req.on("error", (err) => {
+            scanBtn.disabled = false;
+            scanBtn.style.opacity = "1";
+            scanBtn.innerHTML = "<span>🔍</span><span>扫描官方全部模型</span>";
+            alert("扫描请求网络失败: " + err.message);
+          });
+
+          req.on("timeout", () => {
+            req.destroy();
+            scanBtn.disabled = false;
+            scanBtn.style.opacity = "1";
+            scanBtn.innerHTML = "<span>🔍</span><span>扫描官方全部模型</span>";
+            alert("扫描请求超时，请检查网络或 Base URL 是否可达。");
+          });
+
+          req.end();
+        } catch (e) {
+          scanBtn.disabled = false;
+          scanBtn.style.opacity = "1";
+          scanBtn.innerHTML = "<span>🔍</span><span>扫描官方全部模型</span>";
+          alert("Base URL 格式解析错误: " + e.message);
+        }
+      };
+    }
+
+    // 胶囊点击与删除
+    container.querySelectorAll(".dsh-adv-capsule").forEach(el => {
+      el.onclick = (e) => {
+        if (e.target.classList.contains("dsh-adv-capsule-del")) return;
+        selectedModelName = el.dataset.model;
+        testResult = null;
+        render();
+      };
+    });
+
+    container.querySelectorAll(".dsh-adv-capsule-del").forEach(el => {
+      el.onclick = (e) => {
+        e.stopPropagation();
+        const delModel = el.dataset.del;
+        curP.models = curP.models.filter(m => m !== delModel);
+        if (curP.modelConfigs) delete curP.modelConfigs[delModel];
+        try { localStorage.setItem("dsh_models_" + curP.id, JSON.stringify(curP.models)); } catch(e) {}
+        if (selectedModelName === delModel) {
+          selectedModelName = curP.models[0] || "";
+        }
+        testResult = null;
+        render();
+      };
+    });
+
+    // 添加胶囊
+    const addInput = container.querySelector("#dsh-adv-add-input");
+    const addBtn = container.querySelector("#dsh-adv-add-btn");
+    const doAddCapsule = () => {
+      const val = (addInput.value || "").trim();
+      if (!val) return;
+      if (!curP.models.includes(val)) {
+        curP.models.push(val);
+        if (!curP.modelConfigs) curP.modelConfigs = {};
+        curP.modelConfigs[val] = { baseURL: curP.baseURL, apiKey: getApiKeyFromCreds(curP.apiKeyEnv) };
+        selectedModelName = val;
+        try { localStorage.setItem("dsh_models_" + curP.id, JSON.stringify(curP.models)); } catch(e) {}
+      }
+      testResult = null;
+      render();
+    };
+    if (addBtn) addBtn.onclick = doAddCapsule;
+    if (addInput) {
+      addInput.onkeydown = (e) => {
+        if (e.key === "Enter") doAddCapsule();
+      };
+    }
+
+    // 连通性测试
+    const testBtn = container.querySelector("#dsh-adv-test-btn");
+    if (testBtn && selectedModelName) {
+      testBtn.onclick = async () => {
+        if (isTesting) return;
+        isTesting = true;
+        render();
+
+        const cfg = curP.modelConfigs[selectedModelName] || {};
+        const rawUrl = (cfg.baseURL || curP.baseURL || "").trim();
+        const key = cfg.apiKey || getApiKeyFromCreds(curP.apiKeyEnv);
+        const startTime = Date.now();
+
+        try {
+          const testEndpoint = rawUrl.endsWith("/") ? rawUrl + "models" : rawUrl + "/models";
+          const parsed = new URL(testEndpoint);
+          const client = parsed.protocol === "https:" ? https : http;
+
+          const req = client.request(parsed, {
+            method: "GET",
+            headers: {
+              "Authorization": "Bearer " + key,
+              "User-Agent": "claude-cli/2.1.119 (external, cli)"
+            },
+            timeout: 10000
+          }, (res) => {
+            const elapsed = Date.now() - startTime;
+            isTesting = false;
+            if (res.statusCode >= 200 && res.statusCode < 400) {
+              testResult = {
+                success: true,
+                message: "模型 [" + selectedModelName + "] 连通成功！HTTP " + res.statusCode + " (" + elapsed + "ms)"
+              };
+            } else {
+              testResult = {
+                success: false,
+                message: "接口返回状态码 HTTP " + res.statusCode + " (" + elapsed + "ms)"
+              };
+            }
+            render();
+          });
+
+          req.on("error", (err) => {
+            isTesting = false;
+            testResult = { success: false, message: "连通失败: " + err.message };
+            render();
+          });
+
+          req.on("timeout", () => {
+            req.destroy();
+            isTesting = false;
+            testResult = { success: false, message: "探测超时 (10s)，请检查网络与代理" };
+            render();
+          });
+
+          req.end();
+        } catch (e) {
+          isTesting = false;
+          testResult = { success: false, message: "地址解析失败: " + e.message };
+          render();
+        }
+      };
+    }
+
+    // 保存配置
+    const saveBtn = container.querySelector("#dsh-adv-save-btn");
+    const tipEl = container.querySelector("#dsh-adv-save-tip");
+    if (saveBtn) {
+      saveBtn.onclick = () => {
+        // 实时获取输入框中最新的 API Key 与 Base URL，杜绝输入丢失
+        const curKeyInput = container.querySelector("#dsh-adv-apikey");
+        if (curKeyInput) {
+          const val = curKeyInput.value.trim();
+          setApiKeyToCreds(providersData[selectedProviderIdx].apiKeyEnv, val);
+          if (selectedModelName && providersData[selectedProviderIdx].modelConfigs) {
+            if (!providersData[selectedProviderIdx].modelConfigs[selectedModelName]) {
+              providersData[selectedProviderIdx].modelConfigs[selectedModelName] = {};
+            }
+            providersData[selectedProviderIdx].modelConfigs[selectedModelName].apiKey = val;
+          }
+        }
+        const curBaseInput = container.querySelector("#dsh-adv-baseurl");
+        if (curBaseInput) {
+          providersData[selectedProviderIdx].baseURL = curBaseInput.value.trim();
+        }
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = "⏳ 正在保存...";
+
+        try {
+          if (fs.existsSync(credsFile)) {
+            fs.writeFileSync(credsFile, credsText, "utf8");
+          }
+
+          if (fs.existsSync(settingsFile)) {
+            let s = fs.readFileSync(settingsFile, "utf8");
+            const curP = providersData[selectedProviderIdx];
+            if (selectedModelName) {
+              s = s.replace(/agent-default-model:[\s\S]*?model:\s*[^\n]+/,
+                'agent-default-model:\n  provider: ' + curP.id + '\n  model: ' + selectedModelName);
+            }
+
+            // 循环遍历所有服务商，将全量模型列表和最新配置物理持久化至 settings.yaml 与 LocalStorage
+            for (const p of providersData) {
+              try {
+                localStorage.setItem("dsh_models_" + p.id, JSON.stringify(p.models || []));
+              } catch (e) {}
+
+              const modelsYaml = "[\n" + (p.models || []).map(m => "              { id: " + m + " }").join(",\n") + "\n            ]";
+
+              if (s.includes(p.id + ":")) {
+                const pRegex = new RegExp("(" + p.id + ":[\\s\\S]*?baseURL:\\s*)[^,\\n}]+");
+                if (s.match(pRegex) && p.baseURL) {
+                  s = s.replace(pRegex, "$1" + p.baseURL);
+                }
+                const mRegex = new RegExp("(" + p.id + ":[\\s\\S]*?models:\\s*)\\[[\\s\\S]*?\\]");
+                if (s.match(mRegex)) {
+                  s = s.replace(mRegex, "$1" + modelsYaml);
+                }
+              } else if (s.includes("providers:\n    {") || s.includes("providers: {")) {
+                const newProvBlock = "      " + p.id + ":\n        {\n          displayName: \"" + (p.name || p.id) + "\",\n          apiKeyEnv: " + p.apiKeyEnv + ",\n          api: " + (p.protocol === "anthropic" ? "anthropic-messages" : "openai-completions") + ",\n          baseURL: " + p.baseURL + ",\n          models:\n            " + modelsYaml + "\n        },\n";
+                s = s.replace(/(providers:\s*\{)/, "$1\n" + newProvBlock);
+              }
+            }
+
+            fs.writeFileSync(settingsFile, s, "utf8");
+          }
+
+          if (tipEl) {
+            tipEl.style.display = "inline-flex";
+          }
+          saveBtn.textContent = "✅ 已保存 (服务已热更新)";
+          try {
+            const { ipcRenderer } = require("electron");
+            ipcRenderer.invoke("restart-backend-service").catch(() => {});
+          } catch (_e) {}
+          setTimeout(() => { close(); }, 900);
+        } catch (err) {
+          alert("保存配置失败: " + err.message);
+          saveBtn.disabled = false;
+          saveBtn.textContent = "💾 保存配置";
+        }
+      };
+    }
+  }
+
+  document.body.appendChild(overlay);
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.style.display = "none"; };
+  render();
+}
+
 // ---------------------------------------------------------------------------
 // 🌟 终极优雅分流引擎：内置模块右侧内嵌 + 桌面专有模块独立弹窗
 // ---------------------------------------------------------------------------
@@ -1198,6 +3082,33 @@ function injectCustomTabsIntoSettings() {
 
   if (!navList) return;
 
+  // 3. 拦截原生【模型】Tab 点击，弹出自定义配置卡片
+  const allNavBtns2 = Array.from(navList.querySelectorAll("button, [role='tab'], div[role='button']"));
+  const nativeModelBtn = allNavBtns2.find(b => {
+    const t = (b.textContent || "").trim();
+    return t === "模型" || t.startsWith("模型") || t === "Models";
+  });
+  if (nativeModelBtn && !nativeModelBtn.hasAttribute("data-dsh-model-hooked")) {
+    nativeModelBtn.setAttribute("data-dsh-model-hooked", "1");
+    const interceptAndShow = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      showModelConfigModal();
+    };
+    nativeModelBtn.addEventListener("click", interceptAndShow, true);
+    nativeModelBtn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }, true);
+    nativeModelBtn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }, true);
+  }
+
   // 找到定位基准元素（优先排在 侧边卡片 或 插件市场 之后）
   const allCurrentTabs = Array.from(navList.querySelectorAll("button, [role='tab'], div[role='button']"));
   const anchorTab = allCurrentTabs.reverse().find(b => {
@@ -1209,6 +3120,7 @@ function injectCustomTabsIntoSettings() {
 
   // 检查是否已经注入
   const alreadyHasTheme = Array.from(targetContainer.querySelectorAll("*")).some(el => (el.textContent || "").trim().includes("主题外观"));
+  const alreadyHasFeedback = Array.from(targetContainer.querySelectorAll("*")).some(el => (el.textContent || "").trim().includes("问题反馈"));
   const alreadyHasAbout = Array.from(targetContainer.querySelectorAll("*")).some(el => (el.textContent || "").trim().includes("关于"));
 
   // 辅助函数：创建统一外观的侧边栏 Tab 项
@@ -1262,6 +3174,15 @@ function injectCustomTabsIntoSettings() {
       showThemeModal();
     });
     targetContainer.appendChild(themeTab);
+  }
+
+  // 注入问题反馈 Tab
+  if (!alreadyHasFeedback) {
+    const fbIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
+    const fbTab = createSidebarTab("feedback", "问题反馈", fbIcon, () => {
+      showFeedbackModal();
+    });
+    targetContainer.appendChild(fbTab);
   }
 
   // 注入关于 Tab
@@ -1333,6 +3254,10 @@ window.addEventListener("DOMContentLoaded", () => {
   const savedFont = localStorage.getItem("dsh_selected_font");
   if (savedFont && savedFont !== "default") {
     applyAppFont(savedFont);
+  }
+  const savedUiFont = localStorage.getItem("dsh_selected_ui_font");
+  if (savedUiFont && savedUiFont !== "default") {
+    applyAppUiFont(savedUiFont);
   }
   enableSmoothWheelScrollFix();
   scanAndEnableRestartButtons();

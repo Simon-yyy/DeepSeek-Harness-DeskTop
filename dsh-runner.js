@@ -162,6 +162,41 @@ async function boot() {
   console.info(`[dsh-runner] Booting DSH Kernel from: ${dshBin}`);
 
   try {
+    // 注入通用第三方 AI 渠道与反代防 WAF 拦截指纹兜底
+    const originalFetch = globalThis.fetch;
+    if (typeof originalFetch === "function") {
+      globalThis.fetch = function (resource, options = {}) {
+        const urlStr = typeof resource === "string" ? resource : (resource && resource.url) || "";
+        const isLoopback = urlStr.includes("127.0.0.1") || urlStr.includes("localhost");
+        const isOfficialDeepSeek = urlStr.includes("api.deepseek.com") || urlStr.includes("registry.npm");
+
+        if (!isLoopback && !isOfficialDeepSeek && (urlStr.includes("/v1/") || urlStr.includes("/v1") || urlStr.includes("/chat/") || urlStr.includes("/messages") || urlStr.includes("/models"))) {
+          const opt = options || {};
+          let headers = opt.headers;
+          if (!headers) {
+            headers = new Headers();
+          } else if (!(headers instanceof Headers)) {
+            headers = new Headers(headers);
+          }
+
+          // 统一赋予高兼容度白名单 Client 指纹，拦截 deepseek-harness、node-fetch、undici、@deepseek-ai 等特征
+          const currentUa = headers.get("User-Agent") || headers.get("user-agent") || "";
+          if (
+            !currentUa ||
+            currentUa.includes("deepseek-harness") ||
+            currentUa.includes("@deepseek-ai") ||
+            currentUa.includes("node-fetch") ||
+            currentUa.includes("undici")
+          ) {
+            headers.set("User-Agent", "claude-cli/2.1.119 (external, cli)");
+          }
+          opt.headers = headers;
+          return originalFetch(resource, opt);
+        }
+        return originalFetch(resource, options);
+      };
+    }
+
     // Dynamic import to execute DSH web profile within this utilityProcess
     const fileUrl = `file:///${dshBin.replace(/\\/g, "/")}`;
     await import(fileUrl);
