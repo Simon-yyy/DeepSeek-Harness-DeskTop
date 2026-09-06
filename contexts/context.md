@@ -28,7 +28,8 @@ graph TD
    - 负责 Electron 生命周期管理、单实例互斥锁 (`app.requestSingleInstanceLock`)、窗口控制与无边框拖拽；
    - 端口管理：基于 `src/main/utils/port.js` 实现启动与重启时的动态空闲端口探测与向上漂移避让，杜绝端口冲突；
    - 安全加固：通过 Electron 原生 `safeStorage`（Windows DPAPI）提供本地敏感凭据密文存储；注入严格的 CSP 响应头策略；`setWindowOpenHandler` + `will-navigate` 严格拦截外部网页跳转；
-   - 进程守护：将子进程 PID 落盘至 `userData/backend.pid`，启动首秒清理异常关机残留；
+   - 进程守护与环境感知：将子进程 PID 落盘至 `userData/backend.pid`，启动首秒清理异常关机残留；启动前强制断言宿主机 Node.js 环境（`hasNodeInstalled`），未安装时第 1 秒友好引导；
+   - 极速内核拉取：无本地内核时通过 `resolveNpx` 自动绑定 `https://registry.npmmirror.com` 国内淘宝镜像源，杜绝初次拉取海外 npm 超时；捕获子进程 `stderr` 与非 0 `exit` 实现启动异常 Fail-Fast 即时短路；
    - 双通道更新系统：GitHub 客户端安装包流式更新 + 官方微内核 npm 版本检测与 `--ignore-scripts` 安全升级；
    - IPC 消息中心：剪贴板截图临时目录隔离与全生命周期自动销毁、全量诊断日志导出等。
 
@@ -84,6 +85,14 @@ graph TD
 | `check-for-kernel-updates-manual` | `handle` | 无 | 手动触发官方内核版本检测 |
 | `upgrade-kernel-manual` | `handle` | 无 | 触发官方内核安全自动升级并热重启服务 |
 
+### 2.4 自动化单测覆盖矩阵 (Test Matrix)
+基于 Node.js 原生 `node:test` + `node:assert` 构建的零外部依赖测试体系：
+| 单测套件 | 对应被测模块 | 核心断言与覆盖边界 |
+| :--- | :--- | :--- |
+| `test/version-compare.test.js` | `src/main/utils/version.js` | 主/次/修订版本大小比较、相同版本等价性、预发布与 RC 版本（如 `-rc.1` vs `-rc.2`）优先级判定、非法版本号防御 |
+| `test/port-acquire.test.js` | `src/main/utils/port.js` | 空闲端口可用性即时探测、已占用端口自动递增分配避让（3080 ➔ 3081+）、端口探测超时与极限避让 |
+| `test/kernel-compat.test.js` | `src/main/utils/compat.js` | 官方大版本跨代兼容策略（`<2.0.0` 放行，`>=2.0.0` 阻断告警）、边界版本合法性判定 |
+
 ---
 
 ## 3. 架构约束与排坑红线 (Guardrails & Gotchas)
@@ -100,3 +109,8 @@ graph TD
    - 在侧边栏注入自定义 Tab 选项卡时，严禁直接克隆处于激活高亮状态的“通用设置”按钮，必须克隆未激活项并显式重置为纯净 `transparent` 背景。
 6. **主题变量统一性**：
    - 新增或调整主题样式时，必须统一对接 `--dsw-*` CSS 变量系统与主题类选择器，严禁使用硬编码内联样式破坏深浅色适配。
+7. **自动化质量门禁约束**：
+   - 任何涉及核心架构、版本比对、网络端口或安全存储的变更，必须在 `test/` 下提供或同步更新单测，且在构建/交付前通过 `npm test` 验证为 100% 绿灯。
+8. **凭据安全与 DPAPI 隔离**：
+   - 严禁在渲染进程或未受保护的本地 JSON 文件中明文持久化 API Key，所有密钥持久化必须经主进程 `secure-encrypt` 接口加密，落盘权限强制为 `0o600`。
+

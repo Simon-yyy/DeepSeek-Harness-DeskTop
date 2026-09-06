@@ -627,6 +627,29 @@ function resolveNpm() {
   return "npm";
 }
 
+function resolveNpx() {
+  const nodeBin = resolveNode();
+  if (nodeBin && fs.existsSync(nodeBin)) {
+    const nodeDir = path.dirname(nodeBin);
+    const npxCmd = path.join(nodeDir, "npx.cmd");
+    if (fs.existsSync(npxCmd)) return npxCmd;
+    const npxExe = path.join(nodeDir, "npx.exe");
+    if (fs.existsSync(npxExe)) return npxExe;
+  }
+  const which = spawnSync("where", ["npx"], { encoding: "utf8", shell: true, windowsHide: true });
+  if (which.status === 0 && which.stdout.trim()) {
+    const hit = which.stdout.trim().split(/\r?\n/).find((line) => /npx\.cmd$/i.test(line) || /npx$/i.test(line));
+    if (hit) return hit;
+  }
+  return "npx";
+}
+
+function hasNodeInstalled() {
+  const nodeBin = resolveNode();
+  return Boolean(nodeBin && nodeBin !== process.execPath && fs.existsSync(nodeBin));
+}
+
+
 function resolveDshBin() {
   if (process.env.DSH_BIN && fs.existsSync(process.env.DSH_BIN)) return process.env.DSH_BIN;
 
@@ -730,6 +753,7 @@ function resolveDshBin() {
 // ---------------------------------------------------------------------------
 let backendProc = null;
 let backendSpawnedByUs = false;
+let backendStartupError = null;
 
 function cleanupOrphanBackend(port) {
   if (process.platform !== "win32") return;
@@ -801,11 +825,16 @@ function httpReady(port) {
 async function waitForWeb(timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    if (backendStartupError) {
+      console.warn("[dsh-desktop] Aborting waitForWeb due to early backend error:", backendStartupError);
+      return false;
+    }
     if (await httpReady(WEB_PORT)) return true;
     await new Promise((r) => setTimeout(r, 500));
   }
   return false;
 }
+
 
 function sanitizeCredentials() {
   try {
@@ -1048,8 +1077,18 @@ function spawnBackend() {
       windowsHide: true,
     });
   } else {
-    child = spawn("npx", ["-y", "@deepseek-ai/dsh", "web", "--no-open", ...portArgs], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
+    const npxBin = resolveNpx();
+    env.npm_config_registry = "https://registry.npmmirror.com";
+    console.info(`[dsh-desktop] Invoking npx fallback via: ${npxBin} with npmmirror registry...`);
+    child = spawn(
+      npxBin,
+      ["--registry=https://registry.npmmirror.com", "-y", "@deepseek-ai/dsh@latest", "web", "--no-open", ...portArgs],
+      { cwd, env, stdio: "pipe", windowsHide: true, shell: true }
+    );
   }
+
+  backendStartupError = null;
+  let recentStderr = "";
 
   if (child.stdout) {
     child.stdout.on("data", (data) => {
@@ -1073,12 +1112,16 @@ function spawnBackend() {
   }
   if (child.stderr) {
     child.stderr.on("data", (data) => {
-      const str = data.toString().trim();
-      if (str) console.warn("[DSH Kernel Error]", str);
+      const str = data.toString();
+      recentStderr += str;
+      if (recentStderr.length > 2000) recentStderr = recentStderr.slice(-2000);
+      const trimmed = str.trim();
+      if (trimmed) console.warn("[DSH Kernel Error]", trimmed);
     });
   }
 
   child.on("error", (err) => {
+    backendStartupError = `后台子进程启动失败: ${err.message}`;
     console.error("[dsh-desktop] Failed to spawn DSH Backend child process:", err);
   });
 
@@ -1094,6 +1137,9 @@ function spawnBackend() {
   child.on("exit", (code) => {
     console.info("[dsh-desktop] DSH Backend exited with code:", code);
     backendProc = null;
+    if (code !== 0 && code !== null && !isQuitting) {
+      backendStartupError = `后台内核进程异常退出 (Exit Code: ${code})${recentStderr ? `\n\n终端输出详情:\n${recentStderr.trim().slice(-600)}` : ""}`;
+    }
     try {
       const pidFile = path.join(app.getPath("userData"), "backend.pid");
       if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile);
@@ -1568,6 +1614,24 @@ app.whenReady().then(async () => {
   // 启动前先清扫剪贴板临时图片目录
   cleanupClipboardTemp();
 
+  // 1. 前置依赖断言：若宿主机完全未安装 Node.js 且无可用 DSH 内核，首秒友好弹窗拦截引导 (Fail-Fast)
+  if (!hasNodeInstalled() && !resolveDshBin()) {
+    console.warn("[dsh-desktop] Missing Node.js environment on host machine. Prompting user to install.");
+    const choice = dialog.showMessageBoxSync({
+      type: "warning",
+      title: "缺少 Node.js 运行环境",
+      message: "检测到当前电脑尚未安装 Node.js 环境。\n\nDSH Desktop 需要依赖 Node.js 运行官方微内核。请前往 Node.js 官网下载并完成安装（推荐选择 LTS 版本）后，重新打开本应用。",
+      buttons: ["前往官网下载 Node.js", "退出应用"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (choice === 0) {
+      shell.openExternal("https://nodejs.org/");
+    }
+    app.quit();
+    return;
+  }
+
   // 端口动态协商与漂移预检：若 3080 被占用且不可回收，自动向上漂移寻找空闲端口 (P0-1)
   try {
     await acquirePort(3080, 10);
@@ -1580,13 +1644,18 @@ app.whenReady().then(async () => {
   const started = await waitForWeb(STARTUP_TIMEOUT_MS);
 
   if (!started) {
+    const errorDetail = backendStartupError
+      ? `\n\n【诊断错误详情】\n${backendStartupError}`
+      : `\n\n排查建议：\n1. 请确认电脑已安装 Node.js（推荐 v20 或 v22 LTS）\n2. 检查网络是否能正常访问 npm 镜像源（已默认开启 npmmirror 淘宝镜像加速）\n3. 检查是否有本地防火墙或安全杀毒软件拦截了 127.0.0.1 端口通信`;
+
     dialog.showErrorBox(
       "DSH Desktop 启动失败",
-      `无法在 ${STARTUP_TIMEOUT_MS / 1000}s 内启动 dsh web 后端（${WEB_URL}）。\n请确保 dsh 已正确安装，或设置 DSH_BIN 环境变量指向 dsh 的 bin.js。`
+      `无法在 ${STARTUP_TIMEOUT_MS / 1000}s 内启动 dsh web 后端（${WEB_URL}）。${errorDetail}`
     );
     app.quit();
     return;
   }
+
 
   createWindow();
 
