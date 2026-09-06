@@ -29,7 +29,7 @@ graph TD
    - 端口管理：基于 `src/main/utils/port.js` 实现启动与重启时的动态空闲端口探测与向上漂移避让，杜绝端口冲突；
    - 安全加固：通过 Electron 原生 `safeStorage`（Windows DPAPI）提供本地敏感凭据密文存储；注入严格的 CSP 响应头策略；`setWindowOpenHandler` + `will-navigate` 严格拦截外部网页跳转；
    - 进程守护与环境感知：将子进程 PID 落盘至 `userData/backend.pid`，启动首秒清理异常关机残留；启动前强制断言宿主机 Node.js 环境（`hasNodeInstalled`），未安装时第 1 秒友好引导；
-   - 极速内核拉取：无本地内核时通过 `resolveNpx` 自动绑定 `https://registry.npmmirror.com` 国内淘宝镜像源，杜绝初次拉取海外 npm 超时；捕获子进程 `stderr` 与非 0 `exit` 实现启动异常 Fail-Fast 即时短路；
+   - 极速内核拉取与弹性超时：无本地内核时通过 `resolveNpx` 自动绑定 `https://registry.npmmirror.com` 国内淘宝镜像源；启动首秒立即开窗呈现质感 Loading 屏，告别黑盒等待；将拉取超时放宽至 240s 并引入弹性心跳检测（持续拉取自动顺延至最高 360s），彻底消灭 90s 误超时；捕获子进程 `stderr` 与非 0 `exit` 实现启动异常 Fail-Fast 即时短路；
    - 双通道更新系统：GitHub 客户端安装包流式更新 + 官方微内核 npm 版本检测与 `--ignore-scripts` 安全升级；
    - IPC 消息中心：剪贴板截图临时目录隔离与全生命周期自动销毁、全量诊断日志导出等。
 
@@ -113,4 +113,11 @@ graph TD
    - 任何涉及核心架构、版本比对、网络端口或安全存储的变更，必须在 `test/` 下提供或同步更新单测，且在构建/交付前通过 `npm test` 验证为 100% 绿灯。
 8. **凭据安全与 DPAPI 隔离**：
    - 严禁在渲染进程或未受保护的本地 JSON 文件中明文持久化 API Key，所有密钥持久化必须经主进程 `secure-encrypt` 接口加密，落盘权限强制为 `0o600`。
+9. **强制绑定回环地址 127.0.0.1 (P0-3)**：
+   - 拉起微内核必须显式追加 `--host 127.0.0.1`，严禁仅传 `--port` 导致内核默认监听 `0.0.0.0`，彻底消除局域网数据外泄风险与 Windows Defender 防火墙授权拦截弹窗。
+10. **插件 Bundle 物理装配与自愈纪律 (P0-2)**：
+    - `sanitizeWebProfile` 在将插件写入 `dsh.profile.bundles` 前，必须物理核查 `node_modules/<bundle>` 是否真实存在；严禁预置未安装的插件，避免官方内核在 `composeProfile` 时因缺失模块抛出 Exit Code 1 致命崩溃；启动时对本地缺失的 bundle 必须自动清洗自愈。
+11. **启动加载态必须感知且超时弹性化**：
+    - 应用启动前置必须立即创建窗口并展示轻量启动加载屏，严禁让用户在等待后台初始化期间面对黑盒/无响应；内核等待必须基于 `_lastActivity` 心跳弹性顺延，严禁使用 90s 等死板时间掐断正在下载解压组件的子进程。
+
 

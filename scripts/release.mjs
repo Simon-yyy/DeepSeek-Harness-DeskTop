@@ -114,7 +114,7 @@ async function main() {
     '- ⚡ 内置 35 个工业级全流程 AI 编程技能（Matt Pocock Skills）'
   ].join('\n');
 
-  const notesBody = updateNotes ? updateNotes : defaultNotes;
+  const notesBody = updateNotes ? updateNotes.replace(/\\n/g, '\n') : defaultNotes;
 
   const releaseNotesContent = `# DSH Desktop v${newVersion} 发布说明
 

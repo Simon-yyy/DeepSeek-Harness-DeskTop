@@ -45,6 +45,12 @@
       "bundled-skills/**/*",
       "src/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "bundled-backend/@deepseek-ai",
+        "to": "backend/@deepseek-ai"
+      }
+    ],
     "win": {
       "target": [
         "nsis"

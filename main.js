@@ -81,7 +81,7 @@ ipcMain.handle("save-paste-image", async (_event, { buffer, ext }) => {
 let WEB_PORT = 3080;
 let WEB_URL = `http://127.0.0.1:${WEB_PORT}`;
 let currentAuthUrl = "";
-const STARTUP_TIMEOUT_MS = 90_000;
+const STARTUP_TIMEOUT_MS = 240_000; // 首次启动放宽至 4 分钟（弹性心跳检测，绝不误杀下载中的进程）
 const REPO_OWNER = "Simon-yyy";
 const REPO_NAME = "DeepSeek-Harness-DeskTop";
 
@@ -645,6 +645,8 @@ function resolveNpx() {
 }
 
 function hasNodeInstalled() {
+  // 如果已存在内置内核，Electron 自身自带的 Node 运行时（ELECTRON_RUN_AS_NODE=1）即可直接自驱启动！
+  if (resolveDshBin()) return true;
   const nodeBin = resolveNode();
   return Boolean(nodeBin && nodeBin !== process.execPath && fs.existsSync(nodeBin));
 }
@@ -652,6 +654,22 @@ function hasNodeInstalled() {
 
 function resolveDshBin() {
   if (process.env.DSH_BIN && fs.existsSync(process.env.DSH_BIN)) return process.env.DSH_BIN;
+
+  // 0. 最高优先级：随安装包内置的自包含离线微内核（彻底告别外部用户机器上的网络拉取与 90s 超时）
+  const bundledCandidates = [
+    process.resourcesPath ? path.join(process.resourcesPath, "backend", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
+    process.resourcesPath ? path.join(process.resourcesPath, "app.asar.unpacked", "bundled-backend", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
+    process.resourcesPath ? path.join(process.resourcesPath, "bundled-backend", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
+    path.join(__dirname, "bundled-backend", "@deepseek-ai", "dsh", "lib", "bin.js"),
+    path.join(process.cwd(), "bundled-backend", "@deepseek-ai", "dsh", "lib", "bin.js"),
+  ].filter(Boolean);
+
+  for (const b of bundledCandidates) {
+    if (fs.existsSync(b)) {
+      console.info("[dsh-desktop] Using bundled offline kernel:", b);
+      return b;
+    }
+  }
 
   // 1. 搜集所有已安装的全局及本地候选路径
   const nodeBin = resolveNode();
@@ -823,16 +841,34 @@ function httpReady(port) {
 }
 
 async function waitForWeb(timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+  const startTime = Date.now();
+  console.info(`[dsh-desktop] Waiting for backend ready on port ${WEB_PORT} (base timeout: ${timeoutMs / 1000}s)...`);
+  while (true) {
     if (backendStartupError) {
       console.warn("[dsh-desktop] Aborting waitForWeb due to early backend error:", backendStartupError);
       return false;
     }
-    if (await httpReady(WEB_PORT)) return true;
+    if (await httpReady(WEB_PORT)) {
+      console.info(`[dsh-desktop] Backend HTTP ready on port ${WEB_PORT}!`);
+      return true;
+    }
+
+    const now = Date.now();
+    const totalElapsed = now - startTime;
+    const lastActivity = (backendProc && backendProc._lastActivity) ? backendProc._lastActivity : startTime;
+    const idleElapsed = now - lastActivity;
+
+    // 智能弹性超时规则：
+    // 1. 如果总耗时已经超过了传入的基础门限（如 240s），且连续 30 秒没有任何新日志产生，断定超时；
+    // 2. 如果连续 90 秒完全没有哪怕一行输出（且总耗时已过 60s），断定假死超时；
+    // 3. 但只要 npm 正在持续下载（idleElapsed < 30 秒），就自动宽限并继续等待，最长允许至 360 秒（6分钟）！
+    if (totalElapsed > 360_000 || (totalElapsed > timeoutMs && idleElapsed > 30_000) || (idleElapsed > 90_000 && totalElapsed > 60_000)) {
+      console.warn(`[dsh-desktop] waitForWeb timed out. Total: ${Math.round(totalElapsed / 1000)}s, idle: ${Math.round(idleElapsed / 1000)}s`);
+      return false;
+    }
+
     await new Promise((r) => setTimeout(r, 500));
   }
-  return false;
 }
 
 
@@ -983,7 +1019,7 @@ function sanitizeWebProfile() {
       if (pkg.dsh.profile.bundles.length !== originalLen) modified = true;
     }
 
-    // 确保核心生态插件在 web profile 中完整声明并激活
+    // 确保核心生态插件在 web profile 中完整声明（dependencies 依赖声明）
     const requiredPlugins = [
       { name: "dshmarket", version: "^1.38.1" },
       { name: "dsh-better-sidebar", version: "^0.17.1" },
@@ -996,16 +1032,56 @@ function sanitizeWebProfile() {
     pkg.dsh.profile = pkg.dsh.profile || {};
     pkg.dsh.profile.bundles = pkg.dsh.profile.bundles || [];
 
+    const CORE_BASE_BUNDLES = ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"];
+    const nodeModulesDir = path.join(webProfileDir, "node_modules");
+
+    // 1. 自愈清洗：若 bundles 中存在物理上尚未安装到 node_modules 的第三方插件，必须立即剔除！
+    // 官方核心基底 CORE_BASE_BUNDLES 属微内核内置模块，必须豁免检查并绝对保留
+    if (Array.isArray(pkg.dsh.profile.bundles)) {
+      const validBundles = pkg.dsh.profile.bundles.filter((bundleName) => {
+        if (CORE_BASE_BUNDLES.includes(bundleName)) return true;
+        const bundleDir = path.join(nodeModulesDir, ...bundleName.split("/"));
+        const exists = fs.existsSync(bundleDir);
+        if (!exists) {
+          console.info(`[dsh-desktop] Self-healing: pruned uninstalled bundle '${bundleName}' from web profile to prevent composeProfile crash.`);
+        }
+        return exists;
+      });
+      if (validBundles.length !== pkg.dsh.profile.bundles.length) {
+        pkg.dsh.profile.bundles = validBundles;
+        modified = true;
+      }
+    }
+
+    // 2. 官方基底强制置顶保证：确保提供 skills、webServer、sessions、webRuntime 的官方基底处于头部
+    for (let i = CORE_BASE_BUNDLES.length - 1; i >= 0; i--) {
+      const baseBundle = CORE_BASE_BUNDLES[i];
+      if (!pkg.dsh.profile.bundles.includes(baseBundle)) {
+        pkg.dsh.profile.bundles.unshift(baseBundle);
+        modified = true;
+      } else {
+        const curIdx = pkg.dsh.profile.bundles.indexOf(baseBundle);
+        if (curIdx > i) {
+          pkg.dsh.profile.bundles.splice(curIdx, 1);
+          pkg.dsh.profile.bundles.splice(i, 0, baseBundle);
+          modified = true;
+        }
+      }
+    }
+
+    // 3. 对于声明的生态插件：安全写入 dependencies；但仅当本地 node_modules 物理存在时才允许激活推入 bundles
     for (const item of requiredPlugins) {
       if (!pkg.dependencies[item.name]) {
         pkg.dependencies[item.name] = item.version;
         modified = true;
       }
-      if (!pkg.dsh.profile.bundles.includes(item.name)) {
+      const itemDir = path.join(nodeModulesDir, ...item.name.split("/"));
+      if (fs.existsSync(itemDir) && !pkg.dsh.profile.bundles.includes(item.name)) {
         pkg.dsh.profile.bundles.push(item.name);
         modified = true;
       }
     }
+
 
     if (modified) {
       fs.writeFileSync(webPkgPath, JSON.stringify(pkg, null, 2), "utf8");
@@ -1058,18 +1134,21 @@ function spawnBackend() {
 
   env.PORT = String(WEB_PORT);
   env.DSH_PORT = String(WEB_PORT);
+  env.HOST = "127.0.0.1";
+  env.DSH_HOST = "127.0.0.1";
   env.DSH_DESKTOP_MANAGED = "1"; // 激活 network-shim 孤儿进程看门狗自毁机制
-  const portArgs = ["--port", String(WEB_PORT)];
+  // 强制显式绑定回环地址 127.0.0.1 (P0-3)，消除局域网暴露与 Windows 防火墙授权弹窗
+  const hostAndPortArgs = ["--host", "127.0.0.1", "--port", String(WEB_PORT)];
 
   if (dshBin && /\.cmd$/i.test(dshBin)) {
-    child = spawn(dshBin, ["web", "--no-open", ...portArgs], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
+    child = spawn(dshBin, ["web", "--no-open", ...hostAndPortArgs], { cwd, env, stdio: "pipe", windowsHide: true, shell: true });
   } else if (dshBin) {
     if (nodeBin === process.execPath) {
       env.ELECTRON_RUN_AS_NODE = "1";
     }
     const nodeArgs = activeShimPath
-      ? ["-r", activeShimPath, dshBin, "web", "--no-open", ...portArgs]
-      : [dshBin, "web", "--no-open", ...portArgs];
+      ? ["-r", activeShimPath, dshBin, "web", "--no-open", ...hostAndPortArgs]
+      : [dshBin, "web", "--no-open", ...hostAndPortArgs];
     child = spawn(nodeBin, nodeArgs, {
       cwd,
       env,
@@ -1082,7 +1161,7 @@ function spawnBackend() {
     console.info(`[dsh-desktop] Invoking npx fallback via: ${npxBin} with npmmirror registry...`);
     child = spawn(
       npxBin,
-      ["--registry=https://registry.npmmirror.com", "-y", "@deepseek-ai/dsh@latest", "web", "--no-open", ...portArgs],
+      ["--registry=https://registry.npmmirror.com", "-y", "@deepseek-ai/dsh@latest", "web", "--no-open", ...hostAndPortArgs],
       { cwd, env, stdio: "pipe", windowsHide: true, shell: true }
     );
   }
@@ -1090,33 +1169,46 @@ function spawnBackend() {
   backendStartupError = null;
   let recentStderr = "";
 
+  child._lastActivity = Date.now();
+
   if (child.stdout) {
     child.stdout.on("data", (data) => {
+      child._lastActivity = Date.now();
       const str = data.toString().trim();
       if (str) {
         console.info("[DSH Kernel]", str);
         const match = str.match(/dsh web:\s+(http:\/\/[^\s]+)/i);
         if (match && match[1]) {
           currentAuthUrl = match[1].trim();
+          isBackendReady = true;
           console.info("[dsh-desktop] Captured Kernel Auth URL:", currentAuthUrl);
+          updateSplashStatus("本地服务已就绪，正在载入工作台...");
           if (mainWindow && !mainWindow.isDestroyed()) {
-            const curUrl = mainWindow.webContents.getURL();
-            // 仅当窗口当前尚未载入有效页面（如空白页）时才初次加载，避免触发二次重复刷新
-            if (!curUrl || curUrl === "about:blank" || curUrl.startsWith("data:")) {
-              mainWindow.loadURL(currentAuthUrl).catch(() => {});
-            }
+            mainWindow.loadURL(currentAuthUrl).catch(() => {});
           }
+        } else if (str.includes("added ") || str.includes("packages in")) {
+          updateSplashStatus("微内核组件安装完成，正在拉起服务...");
+        } else if (str.includes("Cordis") || str.includes("profile") || str.includes("Starting")) {
+          updateSplashStatus("正在装配本地微服务与插件运行环境...");
         }
       }
     });
   }
   if (child.stderr) {
     child.stderr.on("data", (data) => {
+      child._lastActivity = Date.now();
       const str = data.toString();
       recentStderr += str;
-      if (recentStderr.length > 2000) recentStderr = recentStderr.slice(-2000);
+      if (recentStderr.length > 3000) recentStderr = recentStderr.slice(-3000);
       const trimmed = str.trim();
-      if (trimmed) console.warn("[DSH Kernel Error]", trimmed);
+      if (trimmed) {
+        console.warn("[DSH Kernel Log]", trimmed);
+        if (trimmed.includes("npm") || trimmed.includes("FETCH") || trimmed.includes("registry.npmmirror.com")) {
+          updateSplashStatus("正在通过官方镜像源加速下载核心组件...");
+        } else if (trimmed.includes("extract")) {
+          updateSplashStatus("正在解压微内核组件运行库...");
+        }
+      }
     });
   }
 
@@ -1138,7 +1230,13 @@ function spawnBackend() {
     console.info("[dsh-desktop] DSH Backend exited with code:", code);
     backendProc = null;
     if (code !== 0 && code !== null && !isQuitting) {
-      backendStartupError = `后台内核进程异常退出 (Exit Code: ${code})${recentStderr ? `\n\n终端输出详情:\n${recentStderr.trim().slice(-600)}` : ""}`;
+      let cleanStderr = recentStderr.trim();
+      if (cleanStderr.length > 900) {
+        const head = cleanStderr.slice(0, 450);
+        const tail = cleanStderr.slice(-450);
+        cleanStderr = `${head}\n\n...[省略中间日志]...\n\n${tail}`;
+      }
+      backendStartupError = `后台内核进程异常退出 (Exit Code: ${code})${cleanStderr ? `\n\n终端输出详情:\n${cleanStderr}` : ""}`;
     }
     try {
       const pidFile = path.join(app.getPath("userData"), "backend.pid");
@@ -1147,6 +1245,7 @@ function spawnBackend() {
   });
   return child;
 }
+
 
 function stopBackendIfOurs() {
   try {
@@ -1414,6 +1513,150 @@ function createTray(appIcon) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// High-Fidelity Splash Screen & Loading Flow (Zero extra disk footprint)
+// ---------------------------------------------------------------------------
+let isBackendReady = false;
+
+function getSplashHtml() {
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>DSH Desktop</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: radial-gradient(circle at 50% 35%, #1e293b 0%, #0b0f19 100%);
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      overflow: hidden;
+    }
+    .card {
+      background: rgba(30, 41, 59, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(20px);
+      padding: 44px 50px;
+      border-radius: 24px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 35px rgba(56, 189, 248, 0.12);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      max-width: 490px;
+      width: 90%;
+    }
+    .logo-box {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      margin-bottom: 24px;
+    }
+    .spinner {
+      position: absolute;
+      inset: -5px;
+      border-radius: 50%;
+      border: 3px solid transparent;
+      border-top-color: #38bdf8;
+      border-right-color: #818cf8;
+      animation: spin 1.2s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
+    }
+    .logo-core {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #0284c7 0%, #4f46e5 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 24px rgba(56, 189, 248, 0.4);
+    }
+    .logo-core svg {
+      width: 44px;
+      height: 44px;
+      fill: #ffffff;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+      background: linear-gradient(to right, #ffffff, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .status {
+      font-size: 14px;
+      color: #38bdf8;
+      margin-bottom: 14px;
+      min-height: 22px;
+      font-weight: 500;
+      transition: all 0.25s ease;
+    }
+    .subtext {
+      font-size: 12px;
+      color: #94a3b8;
+      line-height: 1.65;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 20px;
+      padding: 5px 14px;
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 9999px;
+      font-size: 11px;
+      color: #7dd3fc;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo-box">
+      <div class="spinner"></div>
+      <div class="logo-core">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+      </div>
+    </div>
+    <h1>DSH Desktop</h1>
+    <div class="status" id="statusText">正在启动核心引擎服务...</div>
+    <div class="subtext">
+      首次启动正在准备微内核运行环境与依赖组件<br>
+      初始化过程约需 1~2 分钟（仅需一次），请稍候...
+    </div>
+    <div class="badge">⚡ 官方 npmmirror 淘宝镜像加速已开启</div>
+  </div>
+</body>
+</html>`;
+}
+
+function getSplashDataUrl() {
+  return "data:text/html;charset=utf-8," + encodeURIComponent(getSplashHtml());
+}
+
+function updateSplashStatus(text) {
+  if (mainWindow && !mainWindow.isDestroyed() && !isBackendReady) {
+    mainWindow.webContents.executeJavaScript(`
+      try {
+        const el = document.getElementById("statusText");
+        if (el) el.innerText = ${JSON.stringify(text)};
+      } catch (_e) {}
+    `).catch(() => {});
+  }
+}
+
 function createWindow() {
   const appIcon = getAppIcon();
 
@@ -1474,18 +1717,20 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadURL(currentAuthUrl || WEB_URL);
+  if (isBackendReady) {
+    mainWindow.loadURL(currentAuthUrl || WEB_URL);
+  } else {
+    mainWindow.loadURL(getSplashDataUrl());
+  }
 
-  // 错峰静默检查更新：启动 5 秒检查客户端外壳，10 秒检查官方内核
-  setTimeout(() => {
-    checkForUpdates(true);
-  }, 5000);
-
-  setTimeout(() => {
-    if (!isDownloadingUpdate) {
-      checkForKernelUpdates(true);
+  // 错峰静默检查更新：仅在工作台正式载入后触发
+  mainWindow.webContents.on("did-finish-load", () => {
+    const loadedUrl = mainWindow.webContents.getURL();
+    if (loadedUrl && !loadedUrl.startsWith("data:")) {
+      setTimeout(() => { checkForUpdates(true); }, 5000);
+      setTimeout(() => { if (!isDownloadingUpdate) checkForKernelUpdates(true); }, 10000);
     }
-  }, 10000);
+  });
 
   // Test hook: DSH_DESKTOP_TEST=1
   if (process.env.DSH_DESKTOP_TEST === "1") {
@@ -1639,6 +1884,9 @@ app.whenReady().then(async () => {
     console.error("[dsh-desktop] Failed to acquire port:", err);
   }
 
+  // 立即创建并展示窗口（展示内置质感 Loading 屏），彻底告别新机器启动时的黑盒等待
+  createWindow();
+
   console.info(`[dsh-desktop] Spawning clean DSH Web Backend on port ${WEB_PORT} with network shim...`);
   spawnBackend();
   const started = await waitForWeb(STARTUP_TIMEOUT_MS);
@@ -1650,14 +1898,19 @@ app.whenReady().then(async () => {
 
     dialog.showErrorBox(
       "DSH Desktop 启动失败",
-      `无法在 ${STARTUP_TIMEOUT_MS / 1000}s 内启动 dsh web 后端（${WEB_URL}）。${errorDetail}`
+      `无法在预定时间内完成后端初始化（${WEB_URL}）。${errorDetail}`
     );
     app.quit();
     return;
   }
 
-
-  createWindow();
+  // 后端就绪：若主窗口仍停留在加载屏，平滑载入正式工作台
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const cur = mainWindow.webContents.getURL();
+    if (!cur || cur.startsWith("data:") || cur === "about:blank") {
+      mainWindow.loadURL(currentAuthUrl || WEB_URL).catch(() => {});
+    }
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

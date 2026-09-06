@@ -32,3 +32,26 @@
 - **成立证据**: Windows 缺乏原生 POSIX 进程树信号继承机制。主进程非正常退出时操作系统仅关闭 stdio 管道句柄，子进程沦为孤儿进程并长期常驻后台独占端口，导致下一次启动时发生端口冲突与会话协议不匹配。
 - **失效条件**: Windows Job Object 在所有 Node.js / Electron 启动模式下全自动托管生命周期时废止。
 
+### [ID: DSH-ProfileBoot-Bundle-Prune]
+- **角色**: Diagnostic & Constraint
+- **生效范围**: `main.js` (`sanitizeWebProfile`), `~/.dsh/profiles/web/package.json`
+- **核心结论**: 严禁在本地 `node_modules` 尚未物理存在插件前，预先将插件名称写入 `pkg.dsh.profile.bundles`；客户端启动时必须执行物理探测自愈清洗，将缺失实体的 bundle 自动剔除。
+- **成立证据**: 官方内核在 `profile-boot` 装配阶段，会无条件对 `dsh.profile.bundles` 中声明的所有 Bundle 进行补丁层扁平解析（`profile.layers.flatMap`）。若包在本地磁盘不存在，`composeProfile` 立即抛出致命模块解析异常并在首秒触发 `Exit Code: 1` 闪退。
+- **失效条件**: 官方微内核原生具备惰性容错加载能力，遇到不存在的 Bundle 自动跳过且不闪退后废止。
+
+### [ID: DSH-Kernel-Loopback-Binding]
+- **角色**: Constraint
+- **生效范围**: `main.js`, `dsh-runner.js`
+- **核心结论**: 拉起 DSH 微内核子进程时，必须显式传递 `--host 127.0.0.1`，严禁仅传 `--port`。
+- **成立证据**: 官方 `dsh web` 默认监听地址为全网卡 `0.0.0.0`。若不显式约束回环地址，Windows Defender 将在首次启动时弹出公用/专用网络防火墙安全授权拦截弹窗；同时局域网同网段设备可直接访问本地 Web 界面，造成严重的会话劫持与 API Key 配额盗用风险。
+- **失效条件**: 官方内核将默认监听地址硬编码修改为回环地址 `127.0.0.1` 后废止。
+
+### [ID: DSH-Client-AdaptiveStartup-Splash]
+- **角色**: Diagnostic & Constraint
+- **生效范围**: `main.js` (`waitForWeb`, `createWindow`)
+- **核心结论**: 首次启动必须先开窗展示内联 Loading 屏，且内核等待必须基于 `_lastActivity` 心跳弹性顺延（放宽至 240~360s），严禁无窗口等待与 90s 死板超时。
+- **成立证据**: 全新机器无内核缓存时，npx 完整拉取并解压海量微服务依赖需要 100~150 秒。若无窗口会让用户误以为双击无效或假死，若硬设 90 秒超时则会在下载即将完成前夕掐死子进程并弹窗报错，陷入下次打开再次超时的恶性循环。
+- **失效条件**: 客户端完全改用预编译/全内置离线内核分发后废止。
+
+
+

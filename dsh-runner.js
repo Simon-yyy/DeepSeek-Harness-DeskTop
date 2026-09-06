@@ -56,6 +56,19 @@ function resolveDshBin() {
   if (process.env.DSH_BIN && fs.existsSync(process.env.DSH_BIN)) {
     return process.env.DSH_BIN;
   }
+  // 0. 最高优先级：随安装包内置的自包含离线微内核
+  const bundledCandidates = [
+    process.resourcesPath ? path.join(process.resourcesPath, "backend", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
+    process.resourcesPath ? path.join(process.resourcesPath, "app.asar.unpacked", "bundled-backend", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
+    process.resourcesPath ? path.join(process.resourcesPath, "bundled-backend", "@deepseek-ai", "dsh", "lib", "bin.js") : null,
+    path.join(__dirname, "bundled-backend", "@deepseek-ai", "dsh", "lib", "bin.js"),
+    path.join(process.cwd(), "bundled-backend", "@deepseek-ai", "dsh", "lib", "bin.js"),
+  ].filter(Boolean);
+
+  for (const b of bundledCandidates) {
+    if (fs.existsSync(b)) return b;
+  }
+
   const globalCandidates = [
     path.join("D:\\hclaw\\node", "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
     path.join(__dirname, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"),
@@ -151,10 +164,11 @@ async function boot() {
     process.exit(1);
   }
 
-  // Set up process argv to simulate `dsh web --no-open --port <port>`
+  // Set up process argv to simulate `dsh web --no-open --host 127.0.0.1 --port <port>`
   const runnerPort = process.env.PORT || process.env.DSH_PORT;
-  const portArgs = runnerPort ? ["--port", String(runnerPort)] : [];
+  const portArgs = runnerPort ? ["--host", "127.0.0.1", "--port", String(runnerPort)] : ["--host", "127.0.0.1"];
   process.argv = [process.execPath, dshBin, "web", "--no-open", ...portArgs];
+
 
   // Ensure Node environment paths are available
   if (!process.env.DSH_HOME) {
