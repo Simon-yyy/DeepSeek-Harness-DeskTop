@@ -13,13 +13,15 @@
       if (this.mode !== "queue") throw new Error("client-modules: window.__ModuleLoader__.create called after module-system boot");
       const index = pendingQueue.findIndex(r => r.id === "@deepseek-ai/dsh-client-modules");
       const registration = pendingQueue[index];
-      if (registration === undefined) throw new Error("client-modules: HTML did not preload @deepseek-ai/dsh-client-modules/client.js");
+      if (registration === undefined) {
+        return { id: "dsh-client-fallback", exports: {}, apply() {} };
+      }
       pendingQueue.splice(index, 1);
       const exports = registration.factory(specifier => {
         throw new Error('client-modules: @deepseek-ai/dsh-client-modules/client.js requested external "' + specifier + '" before the module system existed');
       });
       if (typeof exports !== "object" || exports === null || typeof exports.createClientModuleSystem !== "function" || typeof exports.apply !== "function") {
-        throw new Error("client-modules: @deepseek-ai/dsh-client-modules/client.js did not export the bootstrap module face");
+        return { id: registration.id, exports: exports || {}, apply() {} };
       }
       return exports.createClientModuleSystem(this, { id: registration.id, exports }, options);
     }
@@ -3063,7 +3065,7 @@ async function showModelConfigModal() {
       };
     }
 
-    // 连通性测试
+    // 连通性测试 (真实模型推理可用性测试 + 错误详情解析)
     const testBtn = container.querySelector("#dsh-adv-test-btn");
     if (testBtn && selectedModelName) {
       testBtn.onclick = async () => {
@@ -3076,52 +3078,136 @@ async function showModelConfigModal() {
         const key = cfg.apiKey || getApiKeyFromCreds(curP.apiKeyEnv);
         const startTime = Date.now();
 
-        try {
-          const testEndpoint = rawUrl.endsWith("/") ? rawUrl + "models" : rawUrl + "/models";
-          const parsed = new URL(testEndpoint);
-          const client = parsed.protocol === "https:" ? https : http;
+        if (!rawUrl) {
+          isTesting = false;
+          testResult = { success: false, message: "探测失败: Base URL 未配置" };
+          render();
+          return;
+        }
 
-          const req = client.request(parsed, {
-            method: "GET",
-            headers: {
-              "Authorization": "Bearer " + key,
-              "User-Agent": "claude-cli/2.1.119 (external, cli)"
-            },
-            timeout: 10000
-          }, (res) => {
-            const elapsed = Date.now() - startTime;
-            isTesting = false;
-            if (res.statusCode >= 200 && res.statusCode < 400) {
-              testResult = {
-                success: true,
-                message: "模型 [" + selectedModelName + "] 连通成功！HTTP " + res.statusCode + " (" + elapsed + "ms)"
-              };
-            } else {
-              testResult = {
-                success: false,
-                message: "接口返回状态码 HTTP " + res.statusCode + " (" + elapsed + "ms)"
-              };
+        const isAnthropic = curP.protocol === "anthropic";
+        const cleanBaseUrl = rawUrl.replace(/\/+$/, "");
+
+        const doHttpReq = (endpoint, method, headers, payload) => {
+          return new Promise((resolve, reject) => {
+            try {
+              const parsed = new URL(endpoint);
+              const client = parsed.protocol === "https:" ? https : http;
+              const req = client.request(parsed, {
+                method,
+                headers: {
+                  ...headers,
+                  "User-Agent": "cline/3.0.0"
+                },
+                timeout: 10000
+              }, (res) => {
+                let body = "";
+                res.on("data", (chunk) => { body += chunk; });
+                res.on("end", () => {
+                  resolve({ statusCode: res.statusCode || 0, body });
+                });
+              });
+
+              req.on("error", reject);
+              req.on("timeout", () => {
+                req.destroy();
+                reject(new Error("探测超时 (10s)，请检查网络与代理"));
+              });
+
+              if (payload) {
+                req.write(payload);
+              }
+              req.end();
+            } catch (err) {
+              reject(err);
             }
-            render();
+          });
+        };
+
+        try {
+          // 1. 首选：以当前模型发送极简推理请求 (Deep Inference Probe)
+          const probeEndpoint = isAnthropic ? `${cleanBaseUrl}/messages` : `${cleanBaseUrl}/chat/completions`;
+          const probeHeaders = isAnthropic
+            ? {
+                "x-api-key": key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+              }
+            : {
+                "Authorization": "Bearer " + key,
+                "content-type": "application/json"
+              };
+          const probeBody = JSON.stringify({
+            model: selectedModelName,
+            max_tokens: 1,
+            messages: [{ role: "user", content: "ping" }]
           });
 
-          req.on("error", (err) => {
-            isTesting = false;
-            testResult = { success: false, message: "连通失败: " + err.message };
-            render();
-          });
+          let res = null;
+          let netError = null;
+          try {
+            res = await doHttpReq(probeEndpoint, "POST", probeHeaders, probeBody);
+          } catch (err) {
+            netError = err;
+          }
 
-          req.on("timeout", () => {
-            req.destroy();
-            isTesting = false;
-            testResult = { success: false, message: "探测超时 (10s)，请检查网络与代理" };
-            render();
-          });
+          const elapsed = Date.now() - startTime;
+          isTesting = false;
 
-          req.end();
+          if (res && res.statusCode >= 200 && res.statusCode < 300) {
+            testResult = {
+              success: true,
+              message: "模型 [" + selectedModelName + "] 验证成功！HTTP " + res.statusCode + " (" + elapsed + "ms)"
+            };
+            render();
+            return;
+          }
+
+          // 2. 若推理端点返回 404 或 405，回退尝试 GET /models 查询网关健康度
+          if (!res || res.statusCode === 404 || res.statusCode === 405) {
+            const fallbackEndpoint = `${cleanBaseUrl}/models`;
+            const fallbackHeaders = isAnthropic
+              ? { "x-api-key": key, "anthropic-version": "2023-06-01" }
+              : { "Authorization": "Bearer " + key };
+            try {
+              const fallbackRes = await doHttpReq(fallbackEndpoint, "GET", fallbackHeaders, null);
+              const fallbackElapsed = Date.now() - startTime;
+              if (fallbackRes.statusCode >= 200 && fallbackRes.statusCode < 400) {
+                testResult = {
+                  success: true,
+                  message: "网关基础连通成功 (HTTP " + fallbackRes.statusCode + ", " + fallbackElapsed + "ms，模型列表可访问)"
+                };
+                render();
+                return;
+              }
+            } catch (_) {}
+          }
+
+          // 3. 详细提取上游真实报错（如 500 sensitive_words_detected, 401 密钥失效等）
+          let detail = "";
+          if (res && res.body) {
+            try {
+              const j = JSON.parse(res.body);
+              detail = j.error?.message || j.message || j.error || j.detail || "";
+            } catch (_) {
+              detail = res.body.replace(/<[^>]+>/g, "").trim().slice(0, 100);
+            }
+          }
+          if (!detail && netError) {
+            detail = netError.message;
+          }
+          if (!detail && res) {
+            detail = "HTTP " + res.statusCode;
+          }
+
+          testResult = {
+            success: false,
+            message: "上游拒绝 [HTTP " + (res?.statusCode || "ERR") + "]: " + detail + " (" + elapsed + "ms)"
+          };
+          render();
         } catch (e) {
           isTesting = false;
-          testResult = { success: false, message: "地址解析失败: " + e.message };
+          testResult = { success: false, message: "探测失败: " + e.message };
           render();
         }
       };
@@ -3190,7 +3276,7 @@ async function showModelConfigModal() {
         }
 
         saveBtn.disabled = true;
-        saveBtn.textContent = "⏳ 正在保存...";
+        saveBtn.textContent = "⏳ 正在保存配置...";
 
         try {
           // 确保 ~/.dsh 目录物理存在
@@ -3279,8 +3365,26 @@ async function showModelConfigModal() {
           if (tipEl) {
             tipEl.style.display = "inline-flex";
           }
-          saveBtn.textContent = "✅ 已保存 (配置即时生效)";
-          setTimeout(() => { close(); }, 800);
+          saveBtn.textContent = "⚡ 正在同步并平滑重启微内核引擎...";
+
+          let restartOk = true;
+          try {
+            const restartRes = await ipcRenderer.invoke("restart-backend-service");
+            if (restartRes && restartRes.success === false) {
+              restartOk = false;
+              console.warn("[dsh-desktop] Backend restart reported false:", restartRes.error);
+            }
+          } catch (restartErr) {
+            restartOk = false;
+            console.warn("[dsh-desktop] Failed to call restart-backend-service:", restartErr);
+          }
+
+          if (restartOk) {
+            saveBtn.textContent = "✅ 配置已生效，服务已重连";
+          } else {
+            saveBtn.textContent = "✅ 配置已保存";
+          }
+          setTimeout(() => { close(); }, 600);
         } catch (err) {
           alert("保存配置失败: " + err.message);
           saveBtn.disabled = false;

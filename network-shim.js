@@ -71,7 +71,7 @@
       lowerUrl.includes("/messages");
     if (!isAiEndpoint) return false;
 
-    // 护栏三：补齐 OpenAI SDK、DSH 内核客户端及底层网络库标识
+    // 护栏三：补齐 OpenAI SDK、DSH 内核客户端 (含 pi-ai) 及底层网络库标识
     const ua = (currentUa || "").toLowerCase();
     return (
       !ua ||
@@ -79,7 +79,12 @@
       ua.includes("deepseek-harness") ||
       ua.includes("@deepseek-ai") ||
       ua.includes("node-fetch") ||
-      ua.includes("undici")
+      ua.includes("undici") ||
+      ua.includes("pi ") ||
+      ua.startsWith("pi/") ||
+      ua.startsWith("pi (") ||
+      ua.includes("pi-ai") ||
+      ua.includes("agent-client")
     );
   }
 

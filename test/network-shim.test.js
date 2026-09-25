@@ -37,10 +37,12 @@ test("shouldOverrideUa 护栏二：仅针对大模型推理与对话端点", () 
 });
 
 test("shouldOverrideUa 护栏三：UA 识别与自定义客户端保护", () => {
-  // 空 UA 或标准库 UA 应覆盖
+  // 空 UA 或标准库 UA (含 pi-ai 默认 UA) 应覆盖
   assert.strictEqual(shouldOverrideUa("https://api.thirdparty.com/v1/chat", ""), true);
   assert.strictEqual(shouldOverrideUa("https://api.thirdparty.com/v1/chat", "node-fetch/1.0"), true);
   assert.strictEqual(shouldOverrideUa("https://api.thirdparty.com/v1/chat", "@deepseek-ai/dsh"), true);
+  assert.strictEqual(shouldOverrideUa("https://api.thirdparty.com/v1/chat", "pi (win32 10.0.26100; x64)"), true);
+  assert.strictEqual(shouldOverrideUa("https://api.thirdparty.com/v1/chat", "pi-ai/client"), true);
 
   // 已经带有 cline 或第三方自定义特殊 UA 则不覆盖
   assert.strictEqual(shouldOverrideUa("https://api.thirdparty.com/v1/chat", "cline/3.0.0"), false);

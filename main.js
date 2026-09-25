@@ -79,7 +79,9 @@ process.on("unhandledRejection", (reason) => {
 // ---------------------------------------------------------------------------
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
+  console.info("[dsh-desktop] 另一个应用实例已在运行中，激活旧实例并退出当前进程。");
   app.quit();
+  process.exit(0);
 }
 
 let mainWindow = null;
@@ -171,8 +173,13 @@ async function safeNavigateToWorkbench(targetUrl, options = {}) {
 
   const curUrl = mainWindow.webContents.getURL();
   if (workbenchLoaded && !options.force && curUrl && !curUrl.startsWith("data:") && curUrl !== "about:blank") {
-    console.info("[dsh-desktop] safeNavigateToWorkbench: workbench already loaded, skipping redundant navigation.");
-    return true;
+    // 认证增强：若当前排队或目标 URL 包含认证 token，而已载入页面未带 token，坚决强制重导航 (P0 认证锁)
+    const urlHasToken = url && url.includes("token=");
+    const curHasToken = curUrl && curUrl.includes("token=");
+    if (!urlHasToken || curHasToken) {
+      console.info("[dsh-desktop] safeNavigateToWorkbench: workbench already loaded, skipping redundant navigation.");
+      return true;
+    }
   }
 
   if (isNavigatingToWorkbench && !options.force) {
@@ -191,9 +198,33 @@ async function safeNavigateToWorkbench(targetUrl, options = {}) {
       updateSplashStatus("本地服务已就绪，正在载入工作台...");
     }
     await mainWindow.loadURL(url);
+
+    // 优雅首屏检测：轮询等待前端核心 DOM 挂载（最多等 1200ms），彻底消除空白窗口
+    try {
+      await mainWindow.webContents.executeJavaScript(`
+        new Promise((resolve) => {
+          const root = document.querySelector("#root") || document.body;
+          if (root && root.children && root.children.length > 0) {
+            return resolve(true);
+          }
+          const obs = new MutationObserver(() => {
+            const el = document.querySelector("#root") || document.body;
+            if (el && el.children && el.children.length > 0) {
+              obs.disconnect();
+              resolve(true);
+            }
+          });
+          obs.observe(document.documentElement, { childList: true, subtree: true });
+          setTimeout(() => { obs.disconnect(); resolve(false); }, 1200);
+        });
+      `);
+    } catch (_e) {}
+
     workbenchLoaded = true;
-    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
-      mainWindow.show();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
     }
     console.info("[dsh-desktop] Workbench navigation completed successfully.");
     return true;
@@ -212,11 +243,12 @@ async function safeNavigateToWorkbench(targetUrl, options = {}) {
     return false;
   } finally {
     isNavigatingToWorkbench = false;
-    if (pendingNavigateUrl && !workbenchLoaded && mainWindow && !mainWindow.isDestroyed()) {
+    // 关键修复：只要存在排队中的带 Token 地址，无条件强制消费，杜绝被丢弃
+    if (pendingNavigateUrl && mainWindow && !mainWindow.isDestroyed()) {
       const nextUrl = pendingNavigateUrl;
       pendingNavigateUrl = null;
       setImmediate(() => {
-        safeNavigateToWorkbench(nextUrl);
+        safeNavigateToWorkbench(nextUrl, { force: true });
       });
     }
   }
@@ -444,7 +476,7 @@ function fetchLatestAppRelease() {
             }
           } catch (e) {}
         }
-        
+
         // 方案 B（免 API 限流）：通过 Web 302 重定向头自动捕获最新 tag
         fetchReleaseByRedirect().then(resolve).catch(reject);
       });
@@ -1246,6 +1278,15 @@ function spawnBackend(options = {}) {
   env.DSH_HOST = "127.0.0.1";
   env.DSH_DESKTOP_MANAGED = "1"; // 激活 network-shim 孤儿进程看门狗自毁机制
   env.DSH_DESKTOP_MAIN_PID = String(process.pid); // 绑定主进程 PID，用于精准孤儿探测与脱壳防误杀
+
+  if (activeShimPath) {
+    const existingNodeOptions = env.NODE_OPTIONS || "";
+    const shimFlag = `--require "${activeShimPath.replace(/\\/g, "/")}"`;
+    if (!existingNodeOptions.includes(activeShimPath.replace(/\\/g, "/"))) {
+      env.NODE_OPTIONS = existingNodeOptions ? `${existingNodeOptions} ${shimFlag}` : shimFlag;
+    }
+  }
+
   // 强制显式绑定回环地址 127.0.0.1 (P0-3)，消除局域网暴露与 Windows 防火墙授权弹窗
   const hostAndPortArgs = ["--host", "127.0.0.1", "--port", String(WEB_PORT)];
 
@@ -2077,17 +2118,12 @@ function createWindow() {
     },
   });
 
-  // 延时兜底定时器：若 2.5 秒后尚未完成载入（例如初次联网下载），才展示窗口与进度
-  let splashFallbackTimer = setTimeout(() => {
-    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible() && !workbenchLoaded) {
-      mainWindow.show();
-    }
-  }, 2500);
-
+  // 静默启动策略：彻底隐藏图二居中 Splash 启动屏卡片，静默等待后端微内核就绪后直接亮屏
   mainWindow.once("ready-to-show", () => {
     if (workbenchLoaded) {
-      if (splashFallbackTimer) clearTimeout(splashFallbackTimer);
-      mainWindow.show();
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
     }
   });
 
@@ -2098,10 +2134,6 @@ function createWindow() {
       mainWindow.hide();
       return false;
     }
-  });
-
-  mainWindow.on("closed", () => {
-    if (splashFallbackTimer) clearTimeout(splashFallbackTimer);
   });
 
   mainWindow.setIcon(appIcon);
@@ -2116,8 +2148,20 @@ function createWindow() {
     event.preventDefault();
   });
 
-  // Keyboard shortcuts: Zoom (Ctrl + / - / 0) & Reload (F5, Ctrl + R)
+  // 渲染进程错误日志透传转发，消除黑盒哑音
+  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    if (level >= 2 || message.includes("Error") || message.includes("Uncaught")) {
+      console.warn(`[Renderer L${level}] ${message} (${sourceId}:${line})`);
+    }
+  });
+
+  // Keyboard shortcuts: Zoom (Ctrl + / - / 0), Reload (F5, Ctrl + R), DevTools (F12, Ctrl + Shift + I)
   mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.key === "F12" || ((input.control || input.meta) && input.shift && input.key.toLowerCase() === "i")) {
+      mainWindow.webContents.toggleDevTools();
+      event.preventDefault();
+      return;
+    }
     if (input.key === "F5") {
       mainWindow.reload();
       event.preventDefault();
@@ -2147,8 +2191,6 @@ function createWindow() {
 
   if (isBackendReady) {
     safeNavigateToWorkbench(currentAuthUrl || WEB_URL);
-  } else {
-    mainWindow.loadURL(getSplashDataUrl());
   }
 
   // 错峰静默检查更新：仅在工作台正式载入后触发
@@ -2161,9 +2203,10 @@ function createWindow() {
     );
     if (isTargetWorkbench) {
       workbenchLoaded = true;
-      if (splashFallbackTimer) clearTimeout(splashFallbackTimer);
-      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
-        mainWindow.show();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        if (!mainWindow.isVisible()) mainWindow.show();
+        mainWindow.focus();
       }
       setTimeout(() => { checkForUpdates(true); }, 5000);
       setTimeout(() => { if (!isDownloadingUpdate) checkForKernelUpdates(true); }, 10000);
@@ -2263,16 +2306,17 @@ app.whenReady().then(async () => {
     session.defaultSession.clearCache().catch(() => {});
     session.defaultSession.clearCodeCaches({}).catch(() => {});
 
-    // 注入纵深防御 CSP 响应头策略 (P3-3 & 5.2.7 彻底移除 unsafe-eval)
+    // 注入纵深防御 CSP 响应头策略 (允许本地回环、Shiki 高亮器与 Vite Worker 正常执行)
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
       const responseHeaders = { ...details.responseHeaders };
       if (details.resourceType === "mainFrame") {
         responseHeaders["Content-Security-Policy"] = [
           "default-src 'self' http://127.0.0.1:* http://localhost:* data: blob:; " +
-          "script-src 'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:*; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://127.0.0.1:* http://localhost:*; " +
           "style-src 'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:* https://fonts.googleapis.com; " +
           "font-src 'self' data: http://127.0.0.1:* http://localhost:* https://fonts.gstatic.com; " +
           "img-src 'self' data: blob: http://127.0.0.1:* http://localhost:* https:; " +
+          "worker-src 'self' blob:; " +
           "connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* https:;"
         ];
       }
