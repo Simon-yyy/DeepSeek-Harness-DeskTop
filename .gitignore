@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+
+# Build & Packaging outputs
+release/
+dist/
+
+# Build cache & Agent workdirs
+.npm-cache/
+.builder-cache/
+.agents/
+.agent/
+.codex/
+.ai-memory/
+.gemini/
+.vscode/
+.cursorrules
+.ignore
+
+# Internal engineering records
+AGENTS.md
+MEMORY.md
+MAP.md
+TASK.md
+CODE_REVIEW.md
+IMPLEMENT.md
+contexts/
+docs/
+问题.md
+plugins/*/AGENTS.md
+plugins/*/MEMORY.md
+plugins/*/MAP.md
+plugins/*/TASK.md
+plugins/*/.cursorrules
+plugins/*/.ignore
+plugins/*/contexts/
+plugins/*/.gemini/
+plugins/*/.github/workflows/
+
+# Logs & Temporary debug scripts
+*.log
+*.tmp
+*.bak
+*.swp
+dsh-desktop-test*.txt
+hook-status.js
+ocr_text.md
+agent-global-rules*.md
+.DS_Store
+Thumbs.db
+
+# Local credentials and databases
+.env
+.env.*
+*.pem
+*.p12
+*.pfx
+*.key
+*.sqlite
+*.sqlite3
+*.db
+
+# Temporary & User test artifacts
+*.tgz
+books/
+bundled-backend/
